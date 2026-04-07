@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: espora_user
+      POSTGRES_PASSWORD: espora_password
+      POSTGRES_DB: espora_db
+    ports:
+      - "15432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  mailpit:
+    image: axllent/mailpit
+    ports:
+      - "18025:8025" # Web UI
+      - "11025:1025" # SMTP port
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "18000:8000"
+    environment:
+      - DATABASE_URL=postgresql://espora_user:espora_password@db:5432/espora_db
+      - SECRET_KEY=supersecretkey_change_in_production
+      - MAIL_SERVER=mailpit
+      - MAIL_PORT=1025
+    volumes:
+      - ./backend:/app
+      - './bases de datos:/app/bases_de_datos'
+    depends_on:
+      - db
+      - mailpit
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "18050:8050"
+    environment:
+      - API_URL=http://backend:8000
+    volumes:
+      - ./frontend:/app
+    depends_on:
+      - backend
+    command: python app.py
+
+volumes:
+  postgres_data:

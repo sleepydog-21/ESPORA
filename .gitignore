@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+.env
+venv/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# ESPORA / App Specific
+bases\ de\ datos/
+.agents/
+.gemini/
+referencias/
+test.txt
+referencias_dump.txt
+*.db
+*.sqlite3
+
+# OSX
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
