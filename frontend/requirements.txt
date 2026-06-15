@@ -2,3 +2,4 @@ dash
 dash-bootstrap-components
 requests
 pandas
+full-calendar-component

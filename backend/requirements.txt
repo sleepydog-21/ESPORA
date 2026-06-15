@@ -13,3 +13,5 @@ bcrypt==3.2.0
 httpx
 pytest
 apscheduler
+pandas
+openpyxl

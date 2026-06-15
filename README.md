@@ -18,6 +18,9 @@ Panel táctico para gestionar la historia clínica interactiva del paciente.
 - **Calendario Clínico Dinámico:** Una interfaz que traza a 14 y 30 días las recaídas o sesiones activas.
 - **Notas de Evolución Interconectadas:** Generador de reportes mediante clics rápidos dentro del calendario. 
 - **Expediente Cronológico (Timeline):** Todo movimiento de un alumno se centraliza en su perfil vertical interactivo. Integra botones prioritarios para alertas rojas de riesgos severos.
+- **Expediente Editable en Vivo:** Ficha clínica de control de proceso (`CaseProcessData`) en la pantalla del paciente que permite modificar variables (edad, inasistencias, canalización, diagnósticos) con autoguardado en base de datos.
+- **Módulo de Anexo Rápido:** Capacidad para arrastrar, soltar o subir fotografías de notas escritas a mano, dictados o reportes en formato PDF/Imagen directamente en la línea de tiempo del paciente, almacenados en Base64 en PostgreSQL.
+- **Descarga Histórica Completa:** Generación instantánea en un solo clic de un libro de Excel consolidado multi-pestaña con el expediente completo (sesiones, datos de proceso, adjuntos, y logs de auditoría).
 
 ### 2.2. Nivel Gerencial: Módulo de Coordinación Local
 Herramientas operativas diseñadas para líderes de Sede/Facultad.
@@ -32,8 +35,15 @@ Panel de control de infraestructura central, invisible para eslabones inferiores
 - **Auditoría Forense Inmutable:** Sistema de *log* cifrado que recaba permanentemente cualquier alteración en todos los sistemas subyacentes. Todo bloque de información manipulado queda grabado con "Timestamp", "Quien" y "Cual campo".
 - **Visualización Analítica Nacional:** Mapas de calor (Heatmaps) consolidados para entender las tasas de deserción en contraste con éxito clínico de todos los estados universitarios centralizados.
 
-### 2.4. Automatización: Ecosistema Externo
-- **Endpoint Webhook (Recepción Automática):** Enlace receptor activo capaz de interceptar cargas JSON provenientes de plataformas externas (como LimeSurvey). Automatiza la captación y mapeos de datos de prospectos sin la intervención de digitadores institucionales, arrojándolos crudos directo a listas de espera de su facultad asignada.
+### 2.4. Automatización y Recepción de Encuestas
+- **Endpoint Webhook (Recepción de LimeSurvey):** Enlace receptor activo que intercepta las respuestas de encuestas de ingreso o satisfacción provenientes de LimeSurvey. Asocia dinámicamente al estudiante, crea su caso en la lista de espera, mapea preguntas a campos flexibles de formularios, y los arroja crudos para auditoría y visualización del terapeuta.
+
+### 2.5. Gestión de Datos y Respaldos Automatizados (Directorio `datos/`)
+El sistema centraliza sus archivos de datos y reportes fuera de la estructura de código en la carpeta local `./datos/`, montada en el contenedor del backend:
+- **`datos/historicos/`:** Aloja bases históricas en formato Excel (ej. `registro_historico_prepas.xlsx`) empleadas por el script `backend/scripts/import_excel.py` para poblar el sistema inicialmente.
+- **`datos/conglomerados/`:** Hojas de cálculo semestrales unificadas de atención clínica para reportes agregados institucionales.
+- **`datos/respaldos/`:** Directorio para respaldos multi-pestaña de la base de datos viva PostgreSQL (`espora_respaldo_actual.xlsx`).
+- **Planificador de Respaldos (Scheduler):** FastAPI inicializa un planificador APScheduler que genera automáticamente un respaldo en Excel cada 12 horas, guardando además históricos con sello de fecha y hora para auditoría offline.
 
 ---
 

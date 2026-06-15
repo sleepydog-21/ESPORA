@@ -184,3 +184,147 @@ def create_session(
             print(f"Failed to send email: {e}")
 
     return db_session
+
+@router.get("/{case_id}/process-data", response_model=schemas.CaseProcessDataResponse)
+def get_case_process_data(
+    case_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_active_user)
+):
+    case = db.query(models.Case).filter(models.Case.id == case_id).first()
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+        
+    # Check permissions
+    if current_user.role == models.RoleEnum.THERAPIST and case.therapist_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to access this case's data")
+    if current_user.role == models.RoleEnum.COORDINATOR and case.site_id != current_user.site_id:
+        raise HTTPException(status_code=403, detail="Not authorized to access cases outside your site")
+        
+    process_data = db.query(models.CaseProcessData).filter(models.CaseProcessData.case_id == case_id).first()
+    
+    # Calculate auto-filled values from sessions & participant
+    from datetime import datetime
+    sessions = sorted(case.sessions, key=lambda s: s.session_date)
+    
+    completed_count = sum(1 for s in sessions if s.status == "completed")
+    cancelled_count = sum(1 for s in sessions if s.status == "cancelled")
+    
+    first_date = sessions[0].session_date if sessions else None
+    last_date = None
+    if case.status == models.CaseStatusEnum.CLOSED or case.closed_at:
+        last_date = case.closed_at or (sessions[-1].session_date if sessions else None)
+        
+    def get_sem(dt):
+        if not dt:
+            return None
+        year = dt.year
+        month = dt.month
+        if 1 <= month <= 6:
+            return f"{year}-2"
+        else:
+            return f"{year}-1"
+            
+    sem_ini = get_sem(first_date)
+    sem_fin = get_sem(last_date)
+    
+    now = datetime.now()
+    current_sem = get_sem(now)
+    prev_year = now.year
+    if now.month <= 6:
+        prev_sem = f"{prev_year - 1}-1"
+    else:
+        prev_sem = f"{prev_year}-2"
+        
+    horas_act = 0
+    horas_ant = 0
+    for s in sessions:
+        s_sem = get_sem(s.session_date)
+        if s_sem == current_sem:
+            horas_act += 1
+        elif s_sem == prev_sem:
+            horas_ant += 1
+            
+    sex = case.participant.gender if case.participant else None
+    
+    if not process_data:
+        # First time creation, populate everything
+        process_data = models.CaseProcessData(
+            case_id=case_id,
+            fecha_inicio=first_date,
+            semestre_inicio=sem_ini,
+            sexo=sex,
+            sesiones_totales=completed_count,
+            inasistencias=cancelled_count,
+            horas_clinicas_actual=horas_act,
+            horas_clinicas_anterior=horas_ant,
+            fecha_finalizacion=last_date,
+            semestre_finalizacion=sem_fin
+        )
+        db.add(process_data)
+        db.commit()
+        db.refresh(process_data)
+    else:
+        # Update dynamically calculated values only if they are not manually modified
+        # If the values are 0 or Null in DB, we can auto-fill them
+        updated = False
+        if process_data.sesiones_totales is None or process_data.sesiones_totales == 0:
+            process_data.sesiones_totales = completed_count
+            updated = True
+        if process_data.inasistencias is None or process_data.inasistencias == 0:
+            process_data.inasistencias = cancelled_count
+            updated = True
+        if process_data.horas_clinicas_actual is None or process_data.horas_clinicas_actual == 0:
+            process_data.horas_clinicas_actual = horas_act
+            updated = True
+        if process_data.horas_clinicas_anterior is None or process_data.horas_clinicas_anterior == 0:
+            process_data.horas_clinicas_anterior = horas_ant
+            updated = True
+        if not process_data.fecha_inicio and first_date:
+            process_data.fecha_inicio = first_date
+            process_data.semestre_inicio = sem_ini
+            updated = True
+        if not process_data.fecha_finalizacion and last_date:
+            process_data.fecha_finalizacion = last_date
+            process_data.semestre_finalizacion = sem_fin
+            updated = True
+        if not process_data.sexo and sex:
+            process_data.sexo = sex
+            updated = True
+            
+        if updated:
+            db.commit()
+            db.refresh(process_data)
+            
+    return process_data
+
+@router.put("/{case_id}/process-data", response_model=schemas.CaseProcessDataResponse)
+def update_case_process_data(
+    case_id: int,
+    data_in: schemas.CaseProcessDataUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_active_user)
+):
+    case = db.query(models.Case).filter(models.Case.id == case_id).first()
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+        
+    # Check permissions
+    if current_user.role == models.RoleEnum.THERAPIST and case.therapist_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to modify this case's data")
+    if current_user.role == models.RoleEnum.COORDINATOR and case.site_id != current_user.site_id:
+        raise HTTPException(status_code=403, detail="Not authorized to modify cases outside your site")
+        
+    process_data = db.query(models.CaseProcessData).filter(models.CaseProcessData.case_id == case_id).first()
+    if not process_data:
+        process_data = models.CaseProcessData(case_id=case_id)
+        db.add(process_data)
+        db.flush()
+        
+    update_dict = data_in.model_dump(exclude_unset=True)
+    for key, value in update_dict.items():
+        setattr(process_data, key, value)
+        
+    db.commit()
+    db.refresh(process_data)
+    return process_data

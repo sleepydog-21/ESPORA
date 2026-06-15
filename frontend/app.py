@@ -7,6 +7,9 @@ app = dash.Dash(
     __name__, 
     use_pages=True, 
     external_stylesheets=[dbc.themes.LUMEN, dbc.icons.BOOTSTRAP],
+    external_scripts=[
+        "https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js"
+    ],
     suppress_callback_exceptions=True
 )
 
@@ -22,7 +25,7 @@ app.layout = html.Div([
             dbc.NavItem(dbc.NavLink("Login", href="/login", id="nav-login")),
             dbc.NavItem(dbc.NavLink("General", href="/general", id="nav-general", style={"display": "none"})),
             dbc.NavItem(dbc.NavLink("Coordinator", href="/coordinator", id="nav-coordinator", style={"display": "none"})),
-            dbc.NavItem(dbc.NavLink("Therapist", href="/therapist", id="nav-therapist", style={"display": "none"})),
+            dbc.NavItem(dbc.NavLink("Panel Therapist", href="/therapist", id="nav-therapist", style={"display": "none"})),
             dbc.NavItem(dbc.NavLink("Logout", href="/login", id="nav-logout", style={"display": "none"})),
         ],
         brand="ESPORA Platform",

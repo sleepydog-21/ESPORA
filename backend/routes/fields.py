@@ -1,130 +1,169 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
-from typing import List, Dict
+from typing import List, Optional
+from jose import JWTError, jwt
 
 import models
 import schemas
 import auth
 from database import get_db
+from config import settings
 
 router = APIRouter(
     prefix="/fields",
-    tags=["Dynamic Fields"]
+    tags=["Dynamic Forms"]
 )
 
-@router.get("/", response_model=List[schemas.FieldDefinitionResponse])
-def get_field_definitions(db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_active_user)):
-    return db.query(models.FieldDefinition).filter(models.FieldDefinition.is_active == True).all()
+optional_oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
 
-@router.post("/", response_model=schemas.FieldDefinitionResponse)
-def create_field_definition(
-    field_in: schemas.FieldDefinitionCreate, 
-    db: Session = Depends(get_db), 
-    current_user: models.User = Depends(auth.get_current_active_user)
-):
-    if current_user.role not in [models.RoleEnum.ADMIN, models.RoleEnum.COORDINATOR]:
-        raise HTTPException(status_code=403, detail="Not authorized to create fields")
-    
-    db_field = db.query(models.FieldDefinition).filter_by(name=field_in.name).first()
-    if db_field:
-        raise HTTPException(status_code=400, detail="Field name already exists")
+def get_optional_user(token: Optional[str] = Depends(optional_oauth2_scheme), db: Session = Depends(get_db)) -> Optional[models.User]:
+    if not token:
+        return None
+    try:
+        payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+        email: str = payload.get("sub")
+        if email:
+            return db.query(models.User).filter(models.User.email == email).first()
+    except JWTError:
+        return None
+    return None
+
+# --- TEMPLATES & FIELDS ---
+
+@router.get("/templates", response_model=List[schemas.FormTemplateResponse])
+def get_form_templates(db: Session = Depends(get_db)):
+    """Obtener plantillas activas. Público para que los frontends puedan renderizarlas."""
+    free_note = db.query(models.FormTemplate).filter(models.FormTemplate.name == "Nota Libre / Expediente Físico (Adjunto)").first()
+    if not free_note:
+        free_note = models.FormTemplate(
+            name="Nota Libre / Expediente Físico (Adjunto)",
+            description="Plantilla para adjuntar notas clínicas manuscritas, imágenes o archivos de texto libre.",
+            is_active=True
+        )
+        db.add(free_note)
+        db.commit()
+        db.refresh(free_note)
         
-    new_field = models.FieldDefinition(**field_in.model_dump())
-    db.add(new_field)
-    db.commit()
-    db.refresh(new_field)
-    return new_field
+    return db.query(models.FormTemplate).filter(models.FormTemplate.is_active == True).order_by(models.FormTemplate.id).all()
 
-@router.get("/case/{case_id}/values")
-def get_case_field_values(
+@router.get("/templates/{template_id}/fields", response_model=List[schemas.FormFieldResponse])
+def get_template_fields(template_id: int, db: Session = Depends(get_db)):
+    template = db.query(models.FormTemplate).filter(models.FormTemplate.id == template_id).first()
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    return template.fields
+
+@router.post("/templates", response_model=schemas.FormTemplateResponse)
+def create_form_template(
+    template_in: schemas.FormTemplateCreate, 
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.require_role([models.RoleEnum.ADMIN, models.RoleEnum.GENERAL_COORDINATOR]))
+):
+    """Crea una nueva plantilla de formulario. Solo Admins."""
+    db_template = models.FormTemplate(**template_in.model_dump())
+    db.add(db_template)
+    db.commit()
+    db.refresh(db_template)
+    return db_template
+
+@router.post("/templates/{template_id}/fields", response_model=schemas.FormFieldResponse)
+def create_form_field(
+    template_id: int,
+    field_in: schemas.FormFieldBase,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.require_role([models.RoleEnum.ADMIN, models.RoleEnum.GENERAL_COORDINATOR]))
+):
+    """Agrega un campo/pregunta a una plantilla existente."""
+    template = db.query(models.FormTemplate).filter(models.FormTemplate.id == template_id).first()
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+        
+    db_field = models.FormField(**field_in.model_dump(), form_template_id=template_id)
+    db.add(db_field)
+    db.commit()
+    db.refresh(db_field)
+    return db_field
+
+# --- SUBMISSIONS ---
+
+@router.post("/submissions", response_model=schemas.FormSubmissionResponse)
+def create_submission(
+    submission_in: schemas.FormSubmissionCreate,
+    db: Session = Depends(get_db),
+    current_user: Optional[models.User] = Depends(get_optional_user)
+):
+    """
+    Enviar las respuestas de un formulario.
+    Si se asocia a un caso, requiere autenticación y validación RBAC.
+    Si es público (ej. ficha de ingreso), no requiere autenticación.
+    """
+    template = db.query(models.FormTemplate).filter(models.FormTemplate.id == submission_in.form_template_id).first()
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+        
+    # Check permissions if tied to a case
+    if submission_in.case_id:
+        case = db.query(models.Case).filter(models.Case.id == submission_in.case_id).first()
+        if not case:
+            raise HTTPException(status_code=404, detail="Case not found")
+        if current_user:
+            if current_user.role == models.RoleEnum.THERAPIST and case.therapist_id != current_user.id:
+                raise HTTPException(status_code=403, detail="Not authorized to submit forms for this case")
+            if current_user.role == models.RoleEnum.COORDINATOR and case.site_id != current_user.site_id:
+                raise HTTPException(status_code=403, detail="Not authorized to submit forms for cases outside your site")
+        else:
+            # Only authenticated users can submit to a case
+            raise HTTPException(status_code=401, detail="Authentication required to submit case forms")
+            
+    db_submission = models.FormSubmission(
+        form_template_id=submission_in.form_template_id,
+        participant_id=submission_in.participant_id,
+        case_id=submission_in.case_id,
+        session_id=submission_in.session_id,
+        submitted_by_id=current_user.id if current_user else None
+    )
+    db.add(db_submission)
+    db.flush() # get id to attach field values
+    
+    for field_val in submission_in.fields:
+        db_val = models.FormFieldValue(
+            form_submission_id=db_submission.id,
+            form_field_id=field_val.form_field_id,
+            value_text=field_val.value_text
+        )
+        db.add(db_val)
+        
+    if submission_in.attachments:
+        for att in submission_in.attachments:
+            db_att = models.FormSubmissionAttachment(
+                form_submission_id=db_submission.id,
+                filename=att.filename,
+                content_type=att.content_type,
+                file_data=att.file_data
+            )
+            db.add(db_att)
+        
+    db.commit()
+    db.refresh(db_submission)
+    return db_submission
+
+@router.get("/submissions/case/{case_id}", response_model=List[schemas.FormSubmissionResponse])
+def get_case_submissions(
     case_id: int, 
-    db: Session = Depends(get_db), 
+    db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_active_user)
 ):
+    """Obtener todas las respuestas de formulario para un caso particular con validación RBAC."""
     case = db.query(models.Case).filter(models.Case.id == case_id).first()
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
         
-    # Check permissions
+    # Validaciones RBAC
     if current_user.role == models.RoleEnum.THERAPIST and case.therapist_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Not authorized to view this case")
+        raise HTTPException(status_code=403, detail="Not authorized to view this case's forms")
     if current_user.role == models.RoleEnum.COORDINATOR and case.site_id != current_user.site_id:
         raise HTTPException(status_code=403, detail="Not authorized to view cases outside your site")
         
-    values = db.query(models.FieldValue).filter(models.FieldValue.participant_id == case.participant_id).all()
-    
-    # Format return as a dict mapping Field Name to Value string to be easy for frontend
-    result = {}
-    for val in values:
-        field_def = db.query(models.FieldDefinition).filter(models.FieldDefinition.id == val.field_definition_id).first()
-        if field_def:
-            result[field_def.name] = val.value
-            
-    return result
-
-@router.put("/case/{case_id}/values")
-def update_case_field_values(
-    case_id: int, 
-    update_data: schemas.FieldValueUpdateBatch,
-    db: Session = Depends(get_db), 
-    current_user: models.User = Depends(auth.get_current_active_user)
-):
-    case = db.query(models.Case).filter(models.Case.id == case_id).first()
-    if not case:
-        raise HTTPException(status_code=404, detail="Case not found")
-        
-    # Check permissions
-    if current_user.role == models.RoleEnum.THERAPIST and case.therapist_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Not authorized to edit this case")
-    if current_user.role == models.RoleEnum.COORDINATOR and case.site_id != current_user.site_id:
-        raise HTTPException(status_code=403, detail="Not authorized to edit cases outside your site")
-        
-    # Process each field
-    updates_made = 0
-    for field_name, new_value in update_data.fields.items():
-        field_def = db.query(models.FieldDefinition).filter(models.FieldDefinition.name == field_name).first()
-        if not field_def:
-            continue # ignore unknown fields
-            
-        current_val = db.query(models.FieldValue).filter(
-            models.FieldValue.participant_id == case.participant_id,
-            models.FieldValue.field_definition_id == field_def.id
-        ).first()
-        
-        old_val_str = current_val.value if current_val else None
-        
-        # Don't stringify everything blindly if it hasn't changed.
-        # Handle string conversion properly.
-        new_val_str = str(new_value) if new_value is not None else None
-        
-        if old_val_str == new_val_str:
-            continue
-            
-        if current_val:
-            current_val.value = new_val_str
-            current_val.updated_by_id = current_user.id
-            audit_action = models.AuditActionEnum.UPDATE
-        else:
-            current_val = models.FieldValue(
-                participant_id=case.participant_id,
-                field_definition_id=field_def.id,
-                value=new_val_str,
-                updated_by_id=current_user.id
-            )
-            db.add(current_val)
-            audit_action = models.AuditActionEnum.CREATE
-            
-        # Log to Audit
-        audit = models.AuditLog(
-            table_name="field_values",
-            record_id=case.participant_id, # Can use participant_id as the anchor
-            action=audit_action,
-            old_value={"field": field_name, "val": old_val_str},
-            new_value={"field": field_name, "val": new_val_str},
-            user_id=current_user.id
-        )
-        db.add(audit)
-        updates_made += 1
-        
-    db.commit()
-    return {"message": "Success", "fields_updated": updates_made}
+    submissions = db.query(models.FormSubmission).filter(models.FormSubmission.case_id == case_id).all()
+    return submissions

@@ -76,6 +76,13 @@ def get_therapist_stats(
             models.Session.session_date < end_of_week
         ).count()
         
+        # Appointment stats
+        apts = db.query(models.Appointment).filter(models.Appointment.therapist_id == t.id).all()
+        apts_total = len(apts)
+        apts_scheduled = sum(1 for a in apts if a.status == "scheduled")
+        apts_completed = sum(1 for a in apts if a.status == "completed")
+        apts_cancelled = sum(1 for a in apts if a.status == "cancelled")
+        
         stats.append({
             "therapist_id": t.id,
             "therapist_name": t.full_name,
@@ -83,7 +90,11 @@ def get_therapist_stats(
             "dropouts": dropouts,
             "men": men_count,
             "women": women_count,
-            "weekly_hours": weekly_sessions # assuming 1 hr per session
+            "weekly_hours": weekly_sessions, # assuming 1 hr per session
+            "apts_total": apts_total,
+            "apts_scheduled": apts_scheduled,
+            "apts_completed": apts_completed,
+            "apts_cancelled": apts_cancelled
         })
         
     return stats

@@ -31,7 +31,7 @@ services:
       - MAIL_PORT=1025
     volumes:
       - ./backend:/app
-      - './bases de datos:/app/bases_de_datos'
+      - './datos:/app/datos'
     depends_on:
       - db
       - mailpit

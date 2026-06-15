@@ -39,6 +39,7 @@ test.txt
 referencias_dump.txt
 *.db
 *.sqlite3
+datos/respaldos/*.xlsx
 
 # OSX
 .DS_Store

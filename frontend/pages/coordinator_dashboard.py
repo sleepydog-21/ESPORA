@@ -15,7 +15,14 @@ API_URL = os.getenv("API_URL", "http://localhost:8000")
 
 layout = dbc.Container([
     dcc.Location(id="coord-url"),
-    html.H2("Tablero de Administración Local", id="coord-title", className="my-4"),
+    dbc.Row([
+        dbc.Col(html.H2("Tablero de Administración Local", id="coord-title", className="my-4"), width=8),
+        dbc.Col(
+            dbc.Button("Descargar Excel Maestro (.xlsx)", id="btn-coord-download-excel", color="info", className="my-4 float-end"),
+            width=4
+        )
+    ]),
+    dcc.Download(id="download-coord-excel"),
     
     dbc.Tabs([
         dbc.Tab(
@@ -45,6 +52,8 @@ layout = dbc.Container([
                             }
                         ],
                         row_selectable='single',
+                        sort_action='native',
+                        sort_mode='single',
                         markdown_options={"html": True}
                     ),
                     html.Div(id="dummy-container")
@@ -135,7 +144,45 @@ layout = dbc.Container([
             ]), className="border-top-0 border-light mb-4 shadow-sm"),
             label="Métricas de Consultantes"
         ),
+        dbc.Tab(
+            dbc.Card(dbc.CardBody([
+                html.H5("Gestión de Temas Dinámicos", className="mb-4"),
+                dbc.Row([
+                    dbc.Col([
+                        dbc.Input(id="new-topic-input", placeholder="Ej. Ansiedad por exámenes...", type="text"),
+                    ], width=8),
+                    dbc.Col([
+                        dbc.Button("Añadir Tema", id="btn-add-topic", color="primary", className="w-100"),
+                    ], width=4)
+                ], className="mb-4"),
+                dbc.Alert(id="topic-add-alert", is_open=False, duration=3000),
+                html.H6("Temas Actuales (Globales y de Sede):", className="mt-4"),
+                dbc.ListGroup(id="topics-list-group")
+            ]), className="border-top-0 border-light mb-4 shadow-sm"),
+            label="Gestión de Temas"
+        ),
+        dbc.Tab(
+            dbc.Card(dbc.CardBody([
+                html.H5("Estadísticas de Temas en Sesiones", className="mb-4"),
+                dbc.Button("Actualizar Gráfica", id="btn-refresh-topic-stats", color="info", size="sm", className="mb-3"),
+                dcc.Graph(id="topic-stats-graph")
+            ]), className="border-top-0 border-light mb-4 shadow-sm"),
+            label="Estadísticas de Temas"
+        ),
     ]),
+    
+    # Export Filter Modal
+    dbc.Modal([
+        dbc.ModalHeader(dbc.ModalTitle("Exportar Excel Maestro (Filtrado)")),
+        dbc.ModalBody([
+            html.P("Selecciona los filtros opcionales para tu descarga. Si lo dejas en blanco, se descargará toda la base de datos de la sede.", className="text-muted small"),
+            dbc.Label("Filtrar por Terapeuta:"),
+            dcc.Dropdown(id="export-therapist-dropdown", placeholder="Todos los terapeutas...", className="mb-3"),
+            dbc.Label("Filtrar por Carrera (Texto libre):"),
+            dbc.Input(id="export-career-input", type="text", placeholder="Ej. Biología, Psicología...", className="mb-3"),
+            dbc.Button("📥 Generar y Descargar Excel", id="btn-submit-export-excel", color="success", className="w-100")
+        ])
+    ], id="modal-export-excel", is_open=False),
     
     # Therapists Directory Modal
     dbc.Modal([
@@ -334,20 +381,40 @@ def load_waitlist(pathname, modal_open, token):
                         found_words.append(w.upper())
                 return ", ".join(found_words)
 
-            if 'participant.metadata_json.resumen_caso' in df.columns:
+            def get_risk_dot(row):
+                text = row.get('participant.metadata_json.resumen_caso', row.get('participant.limesurvey_summary', ''))
+                if not isinstance(text, str): text = ''
+                lower_text = text.lower()
+                risk_count = sum(1 for w in RISK_WORDS if w in lower_text)
+                
+                if risk_count == 0:
+                    return "🟢"
+                elif risk_count <= 1:
+                    return "🟡"
+                else:
+                    return "🔴"
+
+            if 'participant.metadata_json.resumen_caso' in df.columns and df['participant.metadata_json.resumen_caso'].notna().any():
                 df['Resumen (LimeSurvey)'] = df['participant.metadata_json.resumen_caso'].fillna('Sin resumen')
                 df['Palabras de Riesgo'] = df['participant.metadata_json.resumen_caso'].apply(extract_risk_words)
+                df['Riesgo'] = df.apply(get_risk_dot, axis=1)
+            elif 'participant.limesurvey_summary' in df.columns:
+                df['Resumen (LimeSurvey)'] = df['participant.limesurvey_summary'].fillna('Sin resumen')
+                df['Palabras de Riesgo'] = df['participant.limesurvey_summary'].apply(extract_risk_words)
+                df['Riesgo'] = df.apply(get_risk_dot, axis=1)
             else:
                 df['Resumen (LimeSurvey)'] = 'Sin resumen'
                 df['Palabras de Riesgo'] = ''
+                df['Riesgo'] = '🟢'
 
             # Filter for waiting ONLY for the waitlist table
             waitlist_df = df[df['status'] == 'waiting'].copy()
             if waitlist_df.empty:
                 return [], []
                 
-            waitlist_df = waitlist_df[['id', 'participant.full_name', 'participant.student_account', 'status', 'created_at', 'Resumen (LimeSurvey)', 'Palabras de Riesgo', 'therapist_id']]
-            waitlist_df.columns = ['ID Caso', 'Nombre', 'No. Cuenta', 'Estado', 'Fecha Ingreso', 'Resumen (LimeSurvey)', 'Palabras de Riesgo', 'ID Terapeuta']
+            waitlist_df['created_at'] = waitlist_df['created_at'].apply(lambda x: x[:10] if isinstance(x, str) else "")
+            waitlist_df = waitlist_df[['id', 'Riesgo', 'participant.full_name', 'status', 'created_at', 'Resumen (LimeSurvey)', 'Palabras de Riesgo', 'therapist_id']]
+            waitlist_df.columns = ['ID Caso', 'Riesgo', 'Nombre', 'Estado', 'Fecha Ingreso', 'Resumen (LimeSurvey)', 'Palabras de Riesgo', 'ID Terapeuta']
             
             # Map status to spanish
             status_map = {"waiting": "Lista de Espera", "assigned": "Asignado", "active": "Activo", "closed": "Cerrado"}
@@ -542,13 +609,14 @@ def update_title(pathname, token):
 @callback(
     Output("therapist-metrics-dropdown", "options"),
     Output("consultant-metrics-dropdown", "options"),
+    Output("export-therapist-dropdown", "options"),
     Input("coord-url", "pathname"),
     State("auth-token", "data"),
     prevent_initial_call=False
 )
 def load_metrics_dropdowns(pathname, token):
     if not token:
-        return [], []
+        return [], [], []
     
     headers = {"Authorization": f"Bearer {token}"}
     therapists = []
@@ -563,15 +631,16 @@ def load_metrics_dropdowns(pathname, token):
         # Load assigned/active cases (consultants)
         res_c = requests.get(f"{API_URL}/cases", headers=headers)
         if res_c.status_code == 200:
-            cases = res_c.json()
-            for c in cases:
-                if c["status"] in ["assigned", "active"]:
-                    label = f"{c['participant']['full_name']} (Caso #{c['id']})"
-                    consultants.append({"label": label, "value": c['id']})
+            cases_data = res_c.json()
+            for c in cases_data:
+                part = c.get('participant', {})
+                name = part.get('full_name') or part.get('anonymous_folio') or str(part.get('id', 'Desconocido'))
+                consultants.append({"label": f"{name} (Caso {c['id']})", "value": c['id']})
+                
     except Exception as e:
-        print(f"Error cargando dropdowns: {e}")
+        print(f"Error loading dropdowns: {e}")
         
-    return therapists, consultants
+    return therapists, consultants, therapists
 
 @callback(
     Output("therapist-metrics-content", "children"),
@@ -601,6 +670,19 @@ def display_therapist_metrics(therapist_id, token):
                     df = df[df['therapist_id'] == therapist_id]
                     if df.empty: return "El Terapeuta no cuenta con volumen clínico."
                     
+                # Calculate aggregated metrics
+                total_apts = df['apts_total'].sum()
+                sched_apts = df['apts_scheduled'].sum()
+                comp_apts = df['apts_completed'].sum()
+                canc_apts = df['apts_cancelled'].sum()
+                
+                kpi_row = dbc.Row([
+                    dbc.Col(dbc.Card(dbc.CardBody([html.H6("Citas Totales", className="text-muted"), html.H3(f"{total_apts}", className="text-primary")])), width=3),
+                    dbc.Col(dbc.Card(dbc.CardBody([html.H6("Programadas", className="text-muted"), html.H3(f"{sched_apts}", className="text-secondary")])), width=3),
+                    dbc.Col(dbc.Card(dbc.CardBody([html.H6("Llevadas a cabo", className="text-muted"), html.H3(f"{comp_apts}", className="text-success")])), width=3),
+                    dbc.Col(dbc.Card(dbc.CardBody([html.H6("Faltantes/Canceladas", className="text-muted"), html.H3(f"{canc_apts}", className="text-danger")])), width=3),
+                ], className="mb-4")
+                    
                 # Figura 1: Carga Laboral
                 fig_workload = px.bar(df, x="therapist_name", y="weekly_hours", title="Saturación de Citas Semanales (Horas)", color="weekly_hours", color_continuous_scale="Reds")
                 # Figura 2: Demografía
@@ -608,10 +690,13 @@ def display_therapist_metrics(therapist_id, token):
                 # Figura 3: Casos
                 fig_cases = px.bar(df, x="therapist_name", y=["active_cases", "dropouts"], title="Efectividad y Rendimiento (Activos vs Abandonos)", barmode='group')
                 
-                return dbc.Row([
-                    dbc.Col(dcc.Graph(figure=fig_workload), width=12, md=4),
-                    dbc.Col(dcc.Graph(figure=fig_demo), width=12, md=4),
-                    dbc.Col(dcc.Graph(figure=fig_cases), width=12, md=4)
+                return html.Div([
+                    kpi_row,
+                    dbc.Row([
+                        dbc.Col(dcc.Graph(figure=fig_workload), width=12, md=4),
+                        dbc.Col(dcc.Graph(figure=fig_demo), width=12, md=4),
+                        dbc.Col(dcc.Graph(figure=fig_cases), width=12, md=4)
+                    ])
                 ])
                 
     except Exception as e:
@@ -1398,3 +1483,119 @@ def bulk_upload_consultants(contents, filename, token):
             return f"Error del servidor: {res.text}", "danger", True
     except Exception as e:
         return f"Error de conexión: {e}", "danger", True
+
+@callback(
+    Output("modal-export-excel", "is_open"),
+    Input("btn-coord-download-excel", "n_clicks"),
+    State("modal-export-excel", "is_open"),
+    prevent_initial_call=True
+)
+def toggle_export_modal(n, is_open):
+    if n:
+        return not is_open
+    return is_open
+
+@callback(
+    Output("download-coord-excel", "data"),
+    Output("modal-export-excel", "is_open", allow_duplicate=True),
+    Input("btn-submit-export-excel", "n_clicks"),
+    State("export-therapist-dropdown", "value"),
+    State("export-career-input", "value"),
+    State("auth-token", "data"),
+    prevent_initial_call=True
+)
+def download_coord_excel(n, therapist_id, career, token):
+    if not token or not n:
+        return no_update, no_update
+        
+    headers = {"Authorization": f"Bearer {token}"}
+    params = {}
+    if therapist_id:
+        params["therapist_id"] = therapist_id
+    if career:
+        params["career"] = career
+        
+    try:
+        res = requests.get(f"{API_URL}/export/full-excel", headers=headers, params=params)
+        if res.status_code == 200:
+            return dcc.send_bytes(res.content, "ESPORA_Coordinacion_Local.xlsx"), False
+    except Exception as e:
+        print("Excel Export failed:", e)
+        
+    return no_update, False
+
+@callback(
+    Output("topics-list-group", "children"),
+    Input("coord-url", "pathname"),
+    Input("btn-add-topic", "n_clicks"),
+    State("auth-token", "data"),
+    prevent_initial_call=False
+)
+def load_topics_list(pathname, n_clicks, token):
+    if not token:
+        return []
+    headers = {"Authorization": f"Bearer {token}"}
+    try:
+        res = requests.get(f"{API_URL}/topics/", headers=headers)
+        if res.status_code == 200:
+            topics = res.json()
+            items = []
+            for t in topics:
+                badge = dbc.Badge("Sede", color="info", className="ms-2") if t.get('site_id') else dbc.Badge("Global", color="secondary", className="ms-2")
+                items.append(dbc.ListGroupItem([html.Span(t['name']), badge]))
+            return items
+    except Exception as e:
+        print("Error loading topics:", e)
+    return []
+
+@callback(
+    Output("topic-add-alert", "children"),
+    Output("topic-add-alert", "is_open"),
+    Output("topic-add-alert", "color"),
+    Output("new-topic-input", "value"),
+    Input("btn-add-topic", "n_clicks"),
+    State("new-topic-input", "value"),
+    State("auth-token", "data"),
+    prevent_initial_call=True
+)
+def add_new_topic(n_clicks, topic_name, token):
+    if not n_clicks or not topic_name or not token:
+        return dash.no_update, False, dash.no_update, dash.no_update
+        
+    headers = {"Authorization": f"Bearer {token}"}
+    try:
+        payload = {"name": topic_name, "is_active": True}
+        res = requests.post(f"{API_URL}/topics/", json=payload, headers=headers)
+        if res.status_code in [200, 201]:
+            return "Tema añadido correctamente.", True, "success", ""
+        else:
+            return f"Error al añadir tema: {res.text}", True, "danger", topic_name
+    except Exception as e:
+        return f"Error: {str(e)}", True, "danger", topic_name
+
+@callback(
+    Output("topic-stats-graph", "figure"),
+    Input("coord-url", "pathname"),
+    Input("btn-refresh-topic-stats", "n_clicks"),
+    State("auth-token", "data"),
+    prevent_initial_call=False
+)
+def load_topic_stats(pathname, n_clicks, token):
+    if not token:
+        return go.Figure()
+    headers = {"Authorization": f"Bearer {token}"}
+    try:
+        res = requests.get(f"{API_URL}/topics/stats", headers=headers)
+        if res.status_code == 200:
+            stats = res.json()
+            if not stats:
+                fig = go.Figure()
+                fig.update_layout(title="No hay datos suficientes")
+                return fig
+            df = pd.DataFrame(stats)
+            fig = px.bar(df, x="topic", y="count", title="Frecuencia de Temas en Sesiones", color="count", color_continuous_scale="Viridis")
+            fig.update_layout(xaxis_title="Tema", yaxis_title="Número de Sesiones")
+            return fig
+    except Exception as e:
+        print("Error loading topic stats:", e)
+    return go.Figure()

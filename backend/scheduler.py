@@ -69,7 +69,7 @@ def check_dropout_risk():
         
         for c in active_cases:
             last_session = db.query(models.Session).filter(models.Session.case_id == c.id).order_by(models.Session.session_date.desc()).first()
-            if (not last_session and c.updated_at < thirty_days_ago) or (last_session and last_session.session_date.replace(tzinfo=None) < thirty_days_ago):
+            if (not last_session and c.updated_at and c.updated_at < thirty_days_ago) or (last_session and last_session.session_date and last_session.session_date.replace(tzinfo=None) < thirty_days_ago):
                 # Deserción detectada. Avisar si no se ha avisado en una semana
                 recent_alert = db.query(models.Notification).filter(
                     models.Notification.message.like(f"%Riesgo de Deserción: Caso #{c.id}%"),
@@ -86,11 +86,27 @@ def check_dropout_risk():
     finally:
         db.close()
 
+def run_db_backup():
+    try:
+        from scripts.backup_db import backup
+        backup()
+    except Exception as e:
+        print("Scheduler DB Backup failed:", e)
+
 def start_scheduler():
     scheduler = BackgroundScheduler()
     # Runs every minute for demonstration reactivity
     scheduler.add_job(check_alert_thresholds, 'interval', minutes=1)
     # Drop-out detector runs every 1 hour realistically
     scheduler.add_job(check_dropout_risk, 'interval', hours=1)
+    # Database backup runs every 12 hours
+    scheduler.add_job(run_db_backup, 'interval', hours=12)
     scheduler.start()
+    
+    # Run an initial backup on startup
+    try:
+        run_db_backup()
+    except Exception as e:
+        print("Initial DB Backup failed:", e)
+        
     return scheduler

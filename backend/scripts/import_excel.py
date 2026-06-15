@@ -6,7 +6,6 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import pandas as pd
 from database import SessionLocal
 import models
-import auth
 
 def is_nan(val):
     if val is None:
@@ -18,7 +17,7 @@ def is_nan(val):
     return False
 
 def run_import():
-    file_path = "/app/bases_de_datos/base de datos 1.xlsx"
+    file_path = "/app/datos/historicos/registro_historico_prepas.xlsx"
     if not os.path.exists(file_path):
         print(f"File {file_path} not found inside container.")
         return
@@ -27,20 +26,38 @@ def run_import():
     df = pd.read_excel(file_path)
     
     # Identify dynamic fields from column 3 to 9 (D to J)
-    # The user mentioned columns "a D la J" (D to J) which is usually col index 3 to 9
     dynamic_column_names = df.columns[3:10].tolist()
     print("Found dynamic columns:", dynamic_column_names)
     
     db = SessionLocal()
     
     try:
-        # 1. Register new FieldDefinitions if they don't exist
+        # 1. Register new FormTemplate if it doesn't exist
+        template_name = "Ficha de Ingreso Histórica (Excel)"
+        template = db.query(models.FormTemplate).filter_by(name=template_name).first()
+        if not template:
+            template = models.FormTemplate(
+                name=template_name,
+                description="Plantilla de cuestionario autogenerada para almacenar importaciones del Excel histórico de prepas.",
+                is_active=True
+            )
+            db.add(template)
+            db.commit()
+            db.refresh(template)
+            
+        print(f"Template '{template_name}' ready.")
+
+        # 2. Register FormFields for dynamic columns if they don't exist
         field_defs_map = {}
         for col_name in dynamic_column_names:
             safe_name = str(col_name).strip().lower().replace(" ", "_").replace(".", "")
-            db_field = db.query(models.FieldDefinition).filter_by(name=safe_name).first()
+            db_field = db.query(models.FormField).filter_by(
+                form_template_id=template.id,
+                name=safe_name
+            ).first()
             if not db_field:
-                db_field = models.FieldDefinition(
+                db_field = models.FormField(
+                    form_template_id=template.id,
                     name=safe_name,
                     label=str(col_name).strip(),
                     field_type=models.FieldTypeEnum.STRING
@@ -64,7 +81,6 @@ def run_import():
 
         # Iterating the rows
         for index, row in df.iterrows():
-            # The Name is in the second column (index 1)
             name_val = row.iloc[1]
             if str(name_val).strip() == "paterno materno nombre (s)":
                 continue
@@ -95,6 +111,20 @@ def run_import():
                 db.refresh(participant)
                 participants_created += 1
                 
+            # Create a FormSubmission for this participant
+            submission = db.query(models.FormSubmission).filter_by(
+                form_template_id=template.id,
+                participant_id=participant.id
+            ).first()
+            if not submission:
+                submission = models.FormSubmission(
+                    form_template_id=template.id,
+                    participant_id=participant.id,
+                    submitted_by_id=admin_id
+                )
+                db.add(submission)
+                db.flush()
+                
             # Process dynamic columns
             for col_name in dynamic_column_names:
                 cell_value = row[col_name]
@@ -108,21 +138,19 @@ def run_import():
                 val_str = str(cell_value).strip()
                 
                 # Check if exists
-                existing_val = db.query(models.FieldValue).filter_by(
-                    participant_id=participant.id,
-                    field_definition_id=field_def.id
+                existing_val = db.query(models.FormFieldValue).filter_by(
+                    form_submission_id=submission.id,
+                    form_field_id=field_def.id
                 ).first()
                 
                 if existing_val:
-                    if existing_val.value != val_str:
-                        existing_val.value = val_str
-                        existing_val.updated_by_id = admin_id
+                    if existing_val.value_text != val_str:
+                        existing_val.value_text = val_str
                 else:
-                    new_val = models.FieldValue(
-                        participant_id=participant.id,
-                        field_definition_id=field_def.id,
-                        value=val_str,
-                        updated_by_id=admin_id
+                    new_val = models.FormFieldValue(
+                        form_submission_id=submission.id,
+                        form_field_id=field_def.id,
+                        value_text=val_str
                     )
                     db.add(new_val)
                     rubros_inserted += 1

@@ -69,7 +69,13 @@ def handle_login(n_clicks, email, password):
 def update_navbar(user_data):
     if user_data:
         role = user_data.get("role")
-        show = {"display": "block"}
-        hide = {"display": "none"}
-        return hide, show, show if role in ["admin", "general_coordinator"] else hide, show if role in ["admin", "coordinator"] else hide, show if role in ["admin", "therapist"] else hide
+        if role == "general_coordinator":
+            return {"display": "none"}, {"display": "block"}, {"display": "block"}, {"display": "none"}, {"display": "none"}
+        
+        if role == "coordinator":
+            return {"display": "none"}, {"display": "block"}, {"display": "none"}, {"display": "block"}, {"display": "none"}
+            
+        if role == "therapist":
+            return {"display": "none"}, {"display": "block"}, {"display": "none"}, {"display": "none"}, {"display": "block"}
+            
     return {"display": "block"}, {"display": "none"}, {"display": "none"}, {"display": "none"}, {"display": "none"}

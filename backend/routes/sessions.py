@@ -54,6 +54,21 @@ def generate_biweekly(
         db.refresh(s)
     return created_sessions
 
+@router.get("/{session_id}", response_model=schemas.SessionResponse)
+def get_session_by_id(
+    session_id: int,
+    db: DBSession = Depends(get_db),
+    current_user: models.User = Depends(auth.require_role([models.RoleEnum.THERAPIST, models.RoleEnum.COORDINATOR, models.RoleEnum.ADMIN]))
+):
+    session_db = db.query(models.Session).filter(models.Session.id == session_id).first()
+    if not session_db:
+        raise HTTPException(status_code=404, detail="Session not found")
+        
+    if current_user.role == models.RoleEnum.THERAPIST and session_db.case_ref.therapist_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+        
+    return session_db
+
 @router.put("/{session_id}", response_model=schemas.SessionResponse)
 def update_session(
     session_id: int,
@@ -74,6 +89,10 @@ def update_session(
         session_db.therapist_notes = session_in.therapist_notes
     if session_in.status is not None:
         session_db.status = session_in.status
+    if session_in.modality is not None:
+        session_db.modality = session_in.modality
+    if session_in.worked_issues is not None:
+        session_db.worked_issues = session_in.worked_issues
         
     db.commit()
     db.refresh(session_db)
@@ -99,3 +118,32 @@ def create_single_session(
     db.commit()
     db.refresh(new_session)
     return new_session
+
+@router.post("/{session_id}/remind")
+def send_session_reminder(
+    session_id: int,
+    db: DBSession = Depends(get_db),
+    current_user: models.User = Depends(auth.require_role([models.RoleEnum.THERAPIST, models.RoleEnum.COORDINATOR]))
+):
+    session_db = db.query(models.Session).filter(models.Session.id == session_id).first()
+    if not session_db:
+        raise HTTPException(status_code=404, detail="Session not found")
+        
+    case = session_db.case_ref
+    participant = case.participant
+    
+    if current_user.role == models.RoleEnum.THERAPIST and case.therapist_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+        
+    # Mocking Email Sending
+    patient_email = participant.email
+    session_date_str = session_db.session_date.strftime("%Y-%m-%d %H:%M")
+    
+    print(f"==================================================")
+    print(f"📧 EMAIL MOCK SENT TO: {patient_email}")
+    print(f"Subject: Recordatorio de Cita Clínica - ESPORA")
+    print(f"Body: Hola {participant.full_name},\nTe recordamos que tienes una cita clínica programada para el día {session_date_str}.\nPor favor sé puntual. ¡Te esperamos!")
+    print(f"==================================================")
+    
+    return {"status": "success", "message": f"Recordatorio enviado a {patient_email}"}
+

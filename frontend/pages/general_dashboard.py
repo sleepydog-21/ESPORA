@@ -16,7 +16,8 @@ layout = dbc.Container([
     dbc.Row([
         dbc.Col(html.H2("Coordinación General", className="my-4 text-primary"), width=7),
         dbc.Col([
-            dbc.Button("Descargar Base de Datos (CSV)", id="btn-download-csv", color="info", className="my-4 float-end"),
+            dbc.Button("Descargar Excel Maestro (.xlsx)", id="btn-download-excel-maestro", color="info", className="my-4 float-end"),
+            dbc.Button("Descargar CSV Básico", id="btn-download-csv", color="secondary", outline=True, className="my-4 float-end mx-2"),
             dbc.Button("Crear Nueva Sede", id="btn-open-create-site", color="primary", className="my-4 float-end mx-2 fw-bold")
         ], width=5)
     ]),
@@ -231,7 +232,7 @@ layout = dbc.Container([
     Output("site-selector", "options"),
     Input("global-metrics-interval", "n_intervals"),
     Input("site-selector", "value"),
-    State("auth-token", "data")
+    Input("auth-token", "data")
 )
 def update_global_dashboard(n_intervals, selected_site, token):
     if not token:
@@ -370,6 +371,26 @@ def download_research_csv(n, token):
     return no_update
 
 @callback(
+    Output("download-data-csv", "data", allow_duplicate=True),
+    Input("btn-download-excel-maestro", "n_clicks"),
+    State("auth-token", "data"),
+    prevent_initial_call=True
+)
+def download_full_excel(n, token):
+    if not token or not n:
+        return no_update
+        
+    headers = {"Authorization": f"Bearer {token}"}
+    try:
+        res = requests.get(f"{API_URL}/export/full-excel", headers=headers)
+        if res.status_code == 200:
+            return dcc.send_bytes(res.content, "ESPORA_Excel_Maestro.xlsx")
+    except Exception as e:
+        print("Excel Export failed:", e)
+        
+    return no_update
+
+@callback(
     Output("audit-modal", "is_open"),
     Output("audit-table", "data"),
     Input("btn-open-audit", "n_clicks"),
@@ -463,7 +484,7 @@ def create_site_submit(n, name, token):
     Output("add-coord-site-dropdown", "options"),
     Input("global-metrics-interval", "n_intervals"),
     Input("add-coordinator-modal", "is_open"), # Refresh when modal closes
-    State("auth-token", "data")
+    Input("auth-token", "data")
 )
 def load_coordinators_dir(n_intervals, modal_open, token):
     if not token: return [], []

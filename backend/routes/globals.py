@@ -76,20 +76,23 @@ def export_research_data(
     current_user: models.User = Depends(auth.require_role([models.RoleEnum.GENERAL_COORDINATOR, models.RoleEnum.ADMIN]))
 ):
     cases = db.query(models.Case).all()
-    field_defs = {fd.id: fd.name for fd in db.query(models.FieldDefinition).all()}
     
-    values_raw = db.query(models.FieldValue).all()
+    # Fetch all form submissions with their values
+    submissions = db.query(models.FormSubmission).all()
+    
     values_map = {}
-    for v in values_raw:
-        if v.participant_id not in values_map:
-            values_map[v.participant_id] = {}
-        f_name = field_defs.get(v.field_definition_id)
-        if f_name:
-            values_map[v.participant_id][f_name] = v.value
+    for sub in submissions:
+        if sub.participant_id not in values_map:
+            values_map[sub.participant_id] = {}
+        for val in sub.field_values:
+            if val.field:
+                values_map[sub.participant_id][val.field.name] = val.value_text
 
     flat_data = []
     for c in cases:
         p = c.participant
+        if not p:
+            continue
         row = {
             "ID_Caso": c.id,
             "Estado": c.status,
@@ -114,12 +117,13 @@ def get_audit_logs(
     current_user: models.User = Depends(auth.require_role([models.RoleEnum.GENERAL_COORDINATOR, models.RoleEnum.ADMIN]))
 ):
     logs = db.query(
-        models.AuditLog, models.User, models.FieldValue, models.FieldDefinition, models.Participant
+        models.AuditLog, models.User, models.FormFieldValue, models.FormField, models.Participant
     ).outerjoin(models.User, models.AuditLog.user_id == models.User.id)\
-     .outerjoin(models.FieldValue, models.AuditLog.record_id == models.FieldValue.id)\
-     .outerjoin(models.FieldDefinition, models.FieldValue.field_definition_id == models.FieldDefinition.id)\
-     .outerjoin(models.Participant, models.FieldValue.participant_id == models.Participant.id)\
-     .filter(models.AuditLog.table_name == "field_values")\
+     .outerjoin(models.FormFieldValue, models.AuditLog.record_id == models.FormFieldValue.id)\
+     .outerjoin(models.FormField, models.FormFieldValue.form_field_id == models.FormField.id)\
+     .outerjoin(models.FormSubmission, models.FormFieldValue.form_submission_id == models.FormSubmission.id)\
+     .outerjoin(models.Participant, models.FormSubmission.participant_id == models.Participant.id)\
+     .filter(models.AuditLog.table_name == "form_field_values")\
      .order_by(models.AuditLog.timestamp.desc())\
      .limit(limit).all()
 
@@ -132,7 +136,7 @@ def get_audit_logs(
             "Paciente": part.full_name if part else "Desconocido",
             "Campo": f_def.label if f_def else "Campo Desconocido",
             "Accion": log.action,
-            "Valor Anterior": str(log.old_value.get("value", "") if log.old_value else ""),
-            "Nuevo Valor": str(log.new_value.get("value", "") if log.new_value else "")
+            "Valor Anterior": str(log.old_value.get("value_text", "") if log.old_value else ""),
+            "Nuevo Valor": str(log.new_value.get("value_text", "") if log.new_value else "")
         })
     return result

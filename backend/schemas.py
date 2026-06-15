@@ -67,6 +67,7 @@ class SiteResponse(SiteBase):
 class ParticipantBase(BaseModel):
     full_name: str
     student_account: str
+    anonymous_folio: Optional[str] = None
     email: EmailStr
     phone: Optional[str] = None
     emergency_contact_name: Optional[str] = None
@@ -76,6 +77,7 @@ class ParticipantBase(BaseModel):
     career: Optional[str] = None
     site_id: int
     metadata_json: Optional[Dict[str, Any]] = None
+    limesurvey_summary: Optional[str] = None
 
 class ParticipantCreate(ParticipantBase):
     pass
@@ -100,6 +102,7 @@ class SessionBase(BaseModel):
     modality: Optional[ModalityEnum] = None
     therapist_notes: Optional[str] = None
     status: Optional[str] = "scheduled"
+    worked_issues: Optional[Dict[str, Any]] = None
 
 class SessionCreate(SessionBase):
     case_id: int
@@ -115,6 +118,24 @@ class SessionResponse(SessionBase):
 
     class Config:
         from_attributes = True
+
+# --- Topics ---
+class TopicBase(BaseModel):
+    name: str
+    is_active: bool = True
+
+class TopicCreate(TopicBase):
+    pass
+
+class TopicResponse(TopicBase):
+    id: int
+    site_id: Optional[int] = None
+
+    class Config:
+        from_attributes = True
+
+class AppointmentTopicCreate(BaseModel):
+    topic_ids: List[int]
 
 # --- Case ---
 class CaseBase(BaseModel):
@@ -145,34 +166,83 @@ class CaseResponse(CaseBase):
     class Config:
         from_attributes = True
 
-# --- Dynamic Fields ---
-class FieldDefinitionBase(BaseModel):
+# --- Dynamic Forms ---
+class FormTemplateBase(BaseModel):
+    name: str
+    description: Optional[str] = None
+    is_active: bool = True
+
+class FormTemplateCreate(FormTemplateBase):
+    pass
+
+class FormTemplateResponse(FormTemplateBase):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+class FormFieldBase(BaseModel):
     name: str
     label: str
     field_type: FieldTypeEnum
-    is_active: bool = True
+    options: Optional[Dict[str, Any]] = None
+    is_required: bool = False
 
-class FieldDefinitionCreate(FieldDefinitionBase):
-    pass
+class FormFieldCreate(FormFieldBase):
+    form_template_id: int
 
-class FieldDefinitionResponse(FieldDefinitionBase):
+class FormFieldResponse(FormFieldBase):
+    id: int
+    form_template_id: int
+
+    class Config:
+        from_attributes = True
+
+class FormFieldValueCreate(BaseModel):
+    form_field_id: int
+    value_text: Optional[str] = None
+
+class FormFieldValueResponse(FormFieldValueCreate):
+    id: int
+    form_submission_id: int
+    field: Optional[FormFieldResponse] = None
+
+    class Config:
+        from_attributes = True
+
+class AttachmentCreate(BaseModel):
+    filename: str
+    content_type: Optional[str] = None
+    file_data: str # Base64 encoded string
+
+class AttachmentResponse(AttachmentCreate):
     id: int
 
     class Config:
         from_attributes = True
 
-class FieldValueResponse(BaseModel):
+class FormSubmissionCreate(BaseModel):
+    form_template_id: int
+    participant_id: Optional[int] = None
+    case_id: Optional[int] = None
+    session_id: Optional[int] = None
+    fields: List[FormFieldValueCreate]
+    attachments: Optional[List[AttachmentCreate]] = []
+
+class FormSubmissionResponse(BaseModel):
     id: int
-    participant_id: int
-    field_definition_id: int
-    value: Optional[str] = None
-    updated_at: Optional[datetime] = None
+    form_template_id: int
+    participant_id: Optional[int] = None
+    case_id: Optional[int] = None
+    session_id: Optional[int] = None
+    submitted_by_id: Optional[int] = None
+    submitted_at: datetime
+    field_values: List[FormFieldValueResponse] = []
+    attachments: List[AttachmentResponse] = []
+    template: Optional[FormTemplateResponse] = None
 
     class Config:
         from_attributes = True
-
-class FieldValueUpdateBatch(BaseModel):
-    fields: Dict[str, Optional[Any]]
 
 
 # --- Alerts ---
@@ -201,6 +271,76 @@ class NotificationResponse(BaseModel):
     site_id: Optional[int] = None
     user_id: int
     created_at: datetime
+
+    class Config:
+        from_attributes = True
+from pydantic import BaseModel, Field
+from datetime import datetime
+from typing import Optional
+
+class AppointmentBase(BaseModel):
+    case_id: Optional[int] = None
+    start_time: datetime
+    end_time: datetime
+    status: str = "scheduled"
+    notes: Optional[str] = None
+
+class AppointmentCreate(AppointmentBase):
+    therapist_id: int
+
+class AppointmentUpdate(BaseModel):
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    status: Optional[str] = None
+    notes: Optional[str] = None
+
+class AppointmentResponse(AppointmentBase):
+    id: int
+    therapist_id: int
+    topics: List["TopicResponse"] = []
+
+    class Config:
+        from_attributes = True
+
+class CaseProcessDataBase(BaseModel):
+    fecha_solicitud: Optional[datetime] = None
+    fecha_inicio: Optional[datetime] = None
+    semestre_inicio: Optional[str] = None
+    edad: Optional[int] = None
+    sexo: Optional[str] = None
+    ano_cursa: Optional[int] = None
+    sesiones_totales: Optional[int] = None
+    inasistencias: Optional[int] = None
+    horas_padres: Optional[int] = None
+    horas_clinicas_actual: Optional[int] = None
+    horas_clinicas_anterior: Optional[int] = None
+    sesiones_seguimiento: Optional[int] = None
+    estatus_proceso: Optional[str] = None
+    motivo_interrupcion: Optional[str] = None
+    observaciones_abandono: Optional[str] = None
+    fecha_finalizacion: Optional[datetime] = None
+    semestre_finalizacion: Optional[str] = None
+    tuvo_intervencion_api: Optional[bool] = None
+    sesiones_api: Optional[int] = None
+    impresion_diagnostica: Optional[str] = None
+    internamientos_previos: Optional[bool] = None
+    internamientos_previos_cant: Optional[int] = None
+    internamientos_durante: Optional[bool] = None
+    internamientos_durante_cant: Optional[int] = None
+    canalizacion_psiquiatria: Optional[bool] = None
+    dx_psiquiatria: Optional[str] = None
+    fecha_canalizacion: Optional[datetime] = None
+    canalizacion_otra: Optional[bool] = None
+    canalizacion_otra_cual: Optional[str] = None
+    referido_externo: Optional[bool] = None
+    intervencion_espora_comunitaria: Optional[bool] = None
+    intervencion_espora_comunitaria_cual: Optional[str] = None
+
+class CaseProcessDataUpdate(CaseProcessDataBase):
+    pass
+
+class CaseProcessDataResponse(CaseProcessDataBase):
+    case_id: int
 
     class Config:
         from_attributes = True
