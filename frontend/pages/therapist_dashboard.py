@@ -166,7 +166,46 @@ layout = dbc.Container([
     dcc.Store(id='close-modal-trigger', data=0),
     html.Div(id='calendar-dummy-output', style={'display': 'none'}),
     dcc.Input(id='cal-view-range', type='hidden'),
-    dcc.Input(id='cal-status-quick-change', type='hidden')
+    dcc.Input(id='cal-status-quick-change', type='hidden'),
+
+    # Modal de Feedback Semanal (Burnout)
+    dbc.Modal([
+        dbc.ModalHeader(dbc.ModalTitle("🩺 Encuesta Semanal de Bienestar y Respaldo")),
+        dbc.ModalBody([
+            html.P("Como parte de nuestro compromiso con el cuidado de tu salud mental y el acompañamiento clínico en el programa ESPORA, te pedimos responder brevemente a estas 2 preguntas. Solo te tomará unos segundos:", className="text-muted small"),
+            html.Hr(),
+            
+            # Pregunta 1
+            html.Label("1. Del 1 al 10, ¿qué tanto sientes que las demandas administrativas o de volumen interfieren con tu capacidad de escucha analítica?", className="fw-bold small mb-2 d-block"),
+            html.Div(
+                dcc.Slider(
+                    id="feedback-q1",
+                    min=1, max=10, step=1,
+                    marks={i: str(i) for i in range(1, 11)},
+                    value=5,
+                ),
+                className="mb-4 px-2"
+            ),
+            
+            # Pregunta 2
+            html.Label("2. Del 1 al 10, ¿qué tan respaldado/a y acompañado/a te sientes por el programa para manejar los casos de alta complejidad o riesgo de este plantel?", className="fw-bold small mb-2 d-block"),
+            html.Div(
+                dcc.Slider(
+                    id="feedback-q2",
+                    min=1, max=10, step=1,
+                    marks={i: str(i) for i in range(1, 11)},
+                    value=5,
+                ),
+                className="mb-4 px-2"
+            ),
+            
+            dbc.Alert(id="feedback-alert", is_open=False, color="danger", className="mt-2")
+        ]),
+        dbc.ModalFooter([
+            dbc.Button("Omitir por ahora", id="btn-skip-feedback", color="secondary", className="me-auto"),
+            dbc.Button("Enviar Respuestas", id="btn-submit-feedback", color="success")
+        ])
+    ], id="feedback-modal", is_open=False, backdrop="static", keyboard=False)
 ], fluid=True)
 
 dash.clientside_callback(
@@ -599,4 +638,69 @@ def send_reminder_email(n_clicks, session_id, token):
             return f"Error al enviar: {res.text}", True, "danger"
     except Exception as e:
         return f"Error de conexión: {str(e)}", True, "danger"
+
+@callback(
+    Output("feedback-modal", "is_open", allow_duplicate=True),
+    Input("therapist-url", "pathname"),
+    State("auth-token", "data"),
+    prevent_initial_call=True
+)
+def check_feedback_status_on_load(pathname, token):
+    if not token or pathname != "/therapist":
+        return False
+    
+    headers = {"Authorization": f"Bearer {token}"}
+    try:
+        res = requests.get(f"{API_URL}/users/me/feedback/status", headers=headers)
+        if res.status_code == 200:
+            data = res.json()
+            return not data.get("already_submitted", True)
+    except Exception as e:
+        print("Error checking feedback status:", e)
+    return False
+
+@callback(
+    Output("feedback-modal", "is_open"),
+    Output("feedback-alert", "children"),
+    Output("feedback-alert", "is_open"),
+    Input("btn-submit-feedback", "n_clicks"),
+    Input("btn-skip-feedback", "n_clicks"),
+    State("feedback-q1", "value"),
+    State("feedback-q2", "value"),
+    State("auth-token", "data"),
+    prevent_initial_call=True
+)
+def handle_feedback_submission(submit_clicks, skip_clicks, q1, q2, token):
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        return dash.no_update, dash.no_update, dash.no_update
+        
+    trigger_id = ctx.triggered[0]["prop_id"].split(".")[0]
+    
+    if trigger_id == "btn-skip-feedback":
+        return False, "", False
+        
+    if trigger_id == "btn-submit-feedback" and token:
+        if q1 is None or q2 is None:
+            return dash.no_update, "Por favor responde ambas preguntas.", True
+            
+        headers = {"Authorization": f"Bearer {token}"}
+        payload = {
+            "q1_score": int(q1),
+            "q2_score": int(q2)
+        }
+        try:
+            res = requests.post(f"{API_URL}/users/me/feedback", json=payload, headers=headers)
+            if res.status_code in [200, 201]:
+                return False, "", False
+            else:
+                try:
+                    detail = res.json().get("detail", res.text)
+                except:
+                    detail = res.text
+                return True, f"Error al guardar: {detail}", True
+        except Exception as e:
+            return True, f"Error de conexión: {str(e)}", True
+            
+    return dash.no_update, dash.no_update, dash.no_update
 

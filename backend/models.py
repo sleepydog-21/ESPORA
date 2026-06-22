@@ -309,6 +309,19 @@ class CaseProcessData(Base):
 
     case_ref = relationship("Case", back_populates="process_data")
 
+class TherapistFeedback(Base):
+    __tablename__ = "therapist_feedback"
+
+    id = Column(Integer, primary_key=True, index=True)
+    therapist_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    year = Column(Integer, nullable=False)
+    week = Column(Integer, nullable=False)
+    q1_score = Column(Integer, nullable=False)
+    q2_score = Column(Integer, nullable=False)
+    submitted_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    therapist = relationship("User")
+
 def log_audit_event(mapper, connection, target, action):
     table_name = target.__tablename__
     state = inspect(target)

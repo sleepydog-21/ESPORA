@@ -147,3 +147,47 @@ def update_user(
     db.commit()
     db.refresh(db_user)
     return db_user
+
+@router.get("/me/feedback/status", response_model=Dict[str, bool])
+def get_feedback_status(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.require_role([models.RoleEnum.THERAPIST]))
+):
+    import datetime
+    current_year, current_week, _ = datetime.date.today().isocalendar()
+    exists = db.query(models.TherapistFeedback).filter(
+        models.TherapistFeedback.therapist_id == current_user.id,
+        models.TherapistFeedback.year == current_year,
+        models.TherapistFeedback.week == current_week
+    ).first()
+    return {"already_submitted": exists is not None}
+
+@router.post("/me/feedback", response_model=schemas.TherapistFeedbackResponse)
+def submit_feedback(
+    feedback: schemas.TherapistFeedbackCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.require_role([models.RoleEnum.THERAPIST]))
+):
+    import datetime
+    current_year, current_week, _ = datetime.date.today().isocalendar()
+    
+    # Check if already submitted to prevent duplicates
+    exists = db.query(models.TherapistFeedback).filter(
+        models.TherapistFeedback.therapist_id == current_user.id,
+        models.TherapistFeedback.year == current_year,
+        models.TherapistFeedback.week == current_week
+    ).first()
+    if exists:
+        raise HTTPException(status_code=400, detail="Feedback already submitted for this week")
+        
+    db_feedback = models.TherapistFeedback(
+        therapist_id=current_user.id,
+        year=current_year,
+        week=current_week,
+        q1_score=feedback.q1_score,
+        q2_score=feedback.q2_score
+    )
+    db.add(db_feedback)
+    db.commit()
+    db.refresh(db_feedback)
+    return db_feedback

@@ -344,3 +344,20 @@ class CaseProcessDataResponse(CaseProcessDataBase):
 
     class Config:
         from_attributes = True
+
+# --- Therapist Feedback ---
+class TherapistFeedbackCreate(BaseModel):
+    q1_score: int = Field(..., ge=1, le=10)
+    q2_score: int = Field(..., ge=1, le=10)
+
+class TherapistFeedbackResponse(BaseModel):
+    id: int
+    therapist_id: int
+    year: int
+    week: int
+    q1_score: int
+    q2_score: int
+    submitted_at: datetime
+
+    class Config:
+        from_attributes = True
