@@ -169,6 +169,27 @@ layout = dbc.Container([
             ]), className="border-top-0 border-light mb-4 shadow-sm"),
             label="Estadísticas de Temas"
         ),
+        dbc.Tab(
+            dbc.Card(dbc.CardBody([
+                html.H5("Feedback y Clima Laboral de Terapeutas (Burnout)", className="mb-2"),
+                html.P("Monitoreo del impacto de la carga administrativa y el nivel de respaldo clínico del programa en el equipo de terapeutas.", className="text-muted small mb-4"),
+                dbc.Row([
+                    dbc.Col([
+                        dbc.Label("Filtrar por Terapeuta:"),
+                        dcc.Dropdown(id="feedback-therapist-filter", placeholder="Todos los terapeutas (Promedio de Sede)..."),
+                    ], width=12, md=6),
+                ], className="mb-4"),
+                dbc.Row([
+                    dbc.Col([
+                        dcc.Loading(dcc.Graph(id="feedback-q1-graph"))
+                    ], width=12, md=6),
+                    dbc.Col([
+                        dcc.Loading(dcc.Graph(id="feedback-q2-graph"))
+                    ], width=12, md=6),
+                ])
+            ]), className="border-top-0 border-light mb-4 shadow-sm"),
+            label="Clima Laboral"
+        ),
     ]),
     
     # Export Filter Modal
@@ -610,13 +631,14 @@ def update_title(pathname, token):
     Output("therapist-metrics-dropdown", "options"),
     Output("consultant-metrics-dropdown", "options"),
     Output("export-therapist-dropdown", "options"),
+    Output("feedback-therapist-filter", "options"),
     Input("coord-url", "pathname"),
     State("auth-token", "data"),
     prevent_initial_call=False
 )
 def load_metrics_dropdowns(pathname, token):
     if not token:
-        return [], [], []
+        return [], [], [], []
     
     headers = {"Authorization": f"Bearer {token}"}
     therapists = []
@@ -640,7 +662,7 @@ def load_metrics_dropdowns(pathname, token):
     except Exception as e:
         print(f"Error loading dropdowns: {e}")
         
-    return therapists, consultants, therapists
+    return therapists, consultants, therapists, therapists
 
 @callback(
     Output("therapist-metrics-content", "children"),
@@ -1599,3 +1621,85 @@ def load_topic_stats(pathname, n_clicks, token):
     except Exception as e:
         print("Error loading topic stats:", e)
     return go.Figure()
+
+@callback(
+    Output("feedback-q1-graph", "figure"),
+    Output("feedback-q2-graph", "figure"),
+    Input("feedback-therapist-filter", "value"),
+    Input("coord-url", "pathname"),
+    State("auth-token", "data"),
+    prevent_initial_call=False
+)
+def update_feedback_graphs(therapist_id, pathname, token):
+    if not token or pathname != "/coordinator":
+        return go.Figure(), go.Figure()
+        
+    headers = {"Authorization": f"Bearer {token}"}
+    try:
+        res = requests.get(f"{API_URL}/users/feedback/report", headers=headers)
+        if res.status_code != 200:
+            return go.Figure(), go.Figure()
+            
+        data = res.json()
+        if not data:
+            f1 = go.Figure()
+            f1.update_layout(title="No hay datos de feedback registrados aún.")
+            f2 = go.Figure()
+            f2.update_layout(title="No hay datos de feedback registrados aún.")
+            return f1, f2
+            
+        df = pd.DataFrame(data)
+        
+        df["Semana"] = df["year"].astype(str) + "-W" + df["week"].astype(str).str.zfill(2)
+        df = df.sort_values(by=["year", "week"])
+        
+        title_q1 = "Interferencia Administrativa en la Escucha (Promedio de Sede)"
+        title_q2 = "Sentimiento de Respaldo y Acompañamiento (Promedio de Sede)"
+        
+        if therapist_id:
+            df = df[df["therapist_id"] == therapist_id]
+            if not df.empty:
+                t_name = df["therapist_name"].iloc[0]
+                title_q1 = f"Interferencia Administrativa - {t_name}"
+                title_q2 = f"Sentimiento de Respaldo - {t_name}"
+        
+        if df.empty:
+            f1 = go.Figure()
+            f1.update_layout(title="No hay datos para el terapeuta seleccionado.")
+            f2 = go.Figure()
+            f2.update_layout(title="No hay datos para el terapeuta seleccionado.")
+            return f1, f2
+            
+        grouped = df.groupby("Semana").agg({
+            "q1_score": "mean",
+            "q2_score": "mean"
+        }).reset_index()
+        
+        fig_q1 = px.line(
+            grouped, x="Semana", y="q1_score",
+            title=title_q1, markers=True,
+            color_discrete_sequence=["#e74c3c"]
+        )
+        fig_q1.update_layout(
+            yaxis_title="Puntaje (1 = Nada, 10 = Mucho)",
+            yaxis_range=[1, 10],
+            xaxis_title="Semana Calendario"
+        )
+        
+        fig_q2 = px.line(
+            grouped, x="Semana", y="q2_score",
+            title=title_q2, markers=True,
+            color_discrete_sequence=["#2ecc71"]
+        )
+        fig_q2.update_layout(
+            yaxis_title="Puntaje (1 = Nada, 10 = Mucho)",
+            yaxis_range=[1, 10],
+            xaxis_title="Semana Calendario"
+        )
+        
+        return fig_q1, fig_q2
+        
+    except Exception as e:
+        print("Error loading feedback graphs:", e)
+        
+    return go.Figure(), go.Figure()

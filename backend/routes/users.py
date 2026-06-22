@@ -191,3 +191,46 @@ def submit_feedback(
     db.commit()
     db.refresh(db_feedback)
     return db_feedback
+
+@router.get("/feedback/report", response_model=List[Dict[str, Any]])
+def get_feedback_report(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.require_role([models.RoleEnum.ADMIN, models.RoleEnum.GENERAL_COORDINATOR, models.RoleEnum.COORDINATOR]))
+):
+    query = db.query(
+        models.TherapistFeedback.id,
+        models.TherapistFeedback.therapist_id,
+        models.User.full_name.label("therapist_name"),
+        models.User.site_id,
+        models.Site.name.label("site_name"),
+        models.TherapistFeedback.year,
+        models.TherapistFeedback.week,
+        models.TherapistFeedback.q1_score,
+        models.TherapistFeedback.q2_score,
+        models.TherapistFeedback.submitted_at
+    ).join(
+        models.User, models.TherapistFeedback.therapist_id == models.User.id
+    ).join(
+        models.Site, models.User.site_id == models.Site.id
+    )
+
+    if current_user.role == models.RoleEnum.COORDINATOR:
+        query = query.filter(models.User.site_id == current_user.site_id)
+
+    results = query.all()
+    
+    report = []
+    for r in results:
+        report.append({
+            "id": r[0],
+            "therapist_id": r[1],
+            "therapist_name": r[2] or "Terapeuta Sin Nombre",
+            "site_id": r[3],
+            "site_name": r[4],
+            "year": r[5],
+            "week": r[6],
+            "q1_score": r[7],
+            "q2_score": r[8],
+            "submitted_at": r[9].isoformat() if r[9] else None
+        })
+    return report

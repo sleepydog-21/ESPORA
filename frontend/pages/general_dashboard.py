@@ -2,6 +2,7 @@ import dash
 from dash import html, dcc, callback, Input, Output, State, no_update, dash_table
 import dash_bootstrap_components as dbc
 import plotly.express as px
+import plotly.graph_objects as go
 import pandas as pd
 import requests
 import os
@@ -78,6 +79,36 @@ layout = dbc.Container([
                 ])
             ], className="shadow-sm mb-4")
         ], width=12, lg=5)
+    ]),
+
+    # Fila de Reporte de Clima Laboral y Bienestar Docente (Feedback)
+    dbc.Row([
+        dbc.Col([
+            dbc.Card([
+                dbc.CardHeader(dbc.Row([
+                    dbc.Col(html.H5("Feedback y Clima Laboral Semanal de Terapeutas", className="mb-0")),
+                    dbc.Col(
+                        dcc.Dropdown(
+                            id="feedback-site-filter",
+                            placeholder="Filtrar por Sede (Promedio Global)...",
+                            style={"minWidth": "250px"}
+                        ),
+                        width="auto"
+                    )
+                ])),
+                dbc.CardBody([
+                    html.P("Reporte acumulado del impacto de la carga administrativa en la escucha analítica y la percepción de acompañamiento del programa.", className="text-muted small mb-3"),
+                    dbc.Row([
+                        dbc.Col([
+                            dcc.Loading(dcc.Graph(id="feedback-global-q1-graph"))
+                        ], width=12, md=6),
+                        dbc.Col([
+                            dcc.Loading(dcc.Graph(id="feedback-global-q2-graph"))
+                        ], width=12, md=6),
+                    ])
+                ])
+            ], className="shadow-sm mb-4 border-info")
+        ], width=12)
     ]),
 
     # Directorio de Coordinadores Locales
@@ -230,13 +261,14 @@ layout = dbc.Container([
     Output("global-time-series", "figure"),
     Output("global-site-heatmap", "figure"),
     Output("site-selector", "options"),
+    Output("feedback-site-filter", "options"),
     Input("global-metrics-interval", "n_intervals"),
     Input("site-selector", "value"),
     Input("auth-token", "data")
 )
 def update_global_dashboard(n_intervals, selected_site, token):
     if not token:
-        return "-", "-", "-", "-", {}, {}, [{"label": "Todas (Global)", "value": "ALL"}]
+        return "-", "-", "-", "-", {}, {}, [{"label": "Todas (Global)", "value": "ALL"}], [{"label": "Todas (Global)", "value": "ALL"}]
         
     headers = {"Authorization": f"Bearer {token}"}
     try:
@@ -333,12 +365,12 @@ def update_global_dashboard(n_intervals, selected_site, token):
                     coloraxis_showscale=False
                 )
                 
-            return f"{total_cases:,}", f"{waiting:,}", f"{active:,}", str(len(alerts)), fig_time, fig_site, options_dropdown
+            return f"{total_cases:,}", f"{waiting:,}", f"{active:,}", str(len(alerts)), fig_time, fig_site, options_dropdown, options_dropdown
             
     except Exception as e:
         print("Error fetching global metrics:", e)
         
-    return "-", "-", "-", "-", {}, {}, [{"label": "Todas (Global)", "value": "ALL"}]
+    return "-", "-", "-", "-", {}, {}, [{"label": "Todas (Global)", "value": "ALL"}], [{"label": "Todas (Global)", "value": "ALL"}]
 
 @callback(
     Output("alerts-config-modal", "is_open"),
@@ -558,3 +590,84 @@ def submit_new_coordinator(n, email, name, site_id, token):
             return f"Error de Servicio: {res.json().get('detail')}", "danger", True
     except Exception as e:
         return f"Corte de Conexión: {e}", "danger", True
+
+
+@callback(
+    Output("feedback-global-q1-graph", "figure"),
+    Output("feedback-global-q2-graph", "figure"),
+    Input("feedback-site-filter", "value"),
+    Input("global-metrics-interval", "n_intervals"),
+    State("auth-token", "data"),
+    prevent_initial_call=False
+)
+def update_global_feedback_graphs(site_name, n_intervals, token):
+    if not token:
+        return go.Figure(), go.Figure()
+        
+    headers = {"Authorization": f"Bearer {token}"}
+    try:
+        res = requests.get(f"{API_URL}/users/feedback/report", headers=headers)
+        if res.status_code != 200:
+            return go.Figure(), go.Figure()
+            
+        data = res.json()
+        if not data:
+            f1 = go.Figure()
+            f1.update_layout(title="No hay datos de feedback registrados aún.")
+            f2 = go.Figure()
+            f2.update_layout(title="No hay datos de feedback registrados aún.")
+            return f1, f2
+            
+        df = pd.DataFrame(data)
+        
+        df["Semana"] = df["year"].astype(str) + "-W" + df["week"].astype(str).str.zfill(2)
+        df = df.sort_values(by=["year", "week"])
+        
+        title_q1 = "Interferencia Administrativa en la Escucha (Promedio Global)"
+        title_q2 = "Sentimiento de Respaldo y Acompañamiento (Promedio Global)"
+        
+        if site_name and site_name != "ALL":
+            df = df[df["site_name"] == site_name]
+            title_q1 = f"Interferencia Administrativa - {site_name}"
+            title_q2 = f"Sentimiento de Respaldo - {site_name}"
+            
+        if df.empty:
+            f1 = go.Figure()
+            f1.update_layout(title="No hay datos para la sede seleccionada.")
+            f2 = go.Figure()
+            f2.update_layout(title="No hay datos para la sede seleccionada.")
+            return f1, f2
+            
+        grouped = df.groupby("Semana").agg({
+            "q1_score": "mean",
+            "q2_score": "mean"
+        }).reset_index()
+        
+        fig_q1 = px.line(
+            grouped, x="Semana", y="q1_score",
+            title=title_q1, markers=True,
+            color_discrete_sequence=["#e74c3c"]
+        )
+        fig_q1.update_layout(
+            yaxis_title="Puntaje (1 = Nada, 10 = Mucho)",
+            yaxis_range=[1, 10],
+            xaxis_title="Semana Calendario"
+        )
+        
+        fig_q2 = px.line(
+            grouped, x="Semana", y="q2_score",
+            title=title_q2, markers=True,
+            color_discrete_sequence=["#2ecc71"]
+        )
+        fig_q2.update_layout(
+            yaxis_title="Puntaje (1 = Nada, 10 = Mucho)",
+            yaxis_range=[1, 10],
+            xaxis_title="Semana Calendario"
+        )
+        
+        return fig_q1, fig_q2
+        
+    except Exception as e:
+        print("Error loading global feedback graphs:", e)
+        
+    return go.Figure(), go.Figure()
