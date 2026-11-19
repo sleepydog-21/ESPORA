@@ -162,6 +162,7 @@ class CaseResponse(CaseBase):
     closed_at: Optional[datetime] = None
     participant: ParticipantResponse
     sessions: List[SessionResponse] = []
+    process_data: Optional[Any] = None
 
     class Config:
         from_attributes = True
@@ -361,3 +362,11 @@ class TherapistFeedbackResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+# --- Email Request ---
+class CaseSendEmailRequest(BaseModel):
+    subject: str
+    body: str
+    email_type: Optional[str] = "custom"
+    recipient_email: Optional[EmailStr] = None
+

@@ -328,3 +328,78 @@ def update_case_process_data(
     db.commit()
     db.refresh(process_data)
     return process_data
+
+@router.post("/{case_id}/send-email")
+def send_case_email(
+    case_id: int,
+    email_req: schemas.CaseSendEmailRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_active_user)
+):
+    case = db.query(models.Case).filter(models.Case.id == case_id).first()
+    if not case:
+        raise HTTPException(status_code=404, detail="Caso no encontrado")
+
+    # Check permissions
+    if current_user.role == models.RoleEnum.THERAPIST and case.therapist_id != current_user.id:
+        raise HTTPException(status_code=403, detail="No tienes autorización para enviar correos en este caso")
+    if current_user.role == models.RoleEnum.COORDINATOR and case.site_id != current_user.site_id:
+        raise HTTPException(status_code=403, detail="No tienes autorización para operar en sedes distintas a la tuya")
+
+    target_email = email_req.recipient_email or (case.participant.email if case.participant else None)
+    if not target_email:
+        raise HTTPException(status_code=400, detail="El consultante no tiene un correo electrónico registrado")
+
+    import smtplib
+    from email.message import EmailMessage
+    from config import settings
+
+    msg = EmailMessage()
+    msg.set_content(email_req.body)
+    msg['Subject'] = email_req.subject
+    msg['From'] = current_user.email or settings.mail_sender
+    msg['To'] = target_email
+
+    try:
+        with smtplib.SMTP(settings.mail_server, settings.mail_port) as server:
+            server.send_message(msg)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al enviar el correo a través del servidor SMTP: {str(e)}")
+
+    return {
+        "status": "success",
+        "message": f"Correo enviado exitosamente a {target_email}",
+        "recipient": target_email
+    }
+
+
+@router.post("/{case_id}/refer_from_api", response_model=schemas.CaseResponse)
+def refer_from_api(
+    case_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.require_role([models.RoleEnum.API_THERAPIST, models.RoleEnum.ADMIN, models.RoleEnum.COORDINATOR]))
+):
+    case = db.query(models.Case).filter(models.Case.id == case_id).first()
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+        
+    if current_user.role == models.RoleEnum.API_THERAPIST and case.therapist_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to refer this case")
+        
+    # Unassign therapist and return to waitlist
+    case.status = models.CaseStatusEnum.WAITING
+    case.therapist_id = None
+    
+    # Mark in process data
+    process_data = db.query(models.CaseProcessData).filter(models.CaseProcessData.case_id == case_id).first()
+    if not process_data:
+        process_data = models.CaseProcessData(case_id=case_id, tuvo_intervencion_api=True)
+        db.add(process_data)
+    else:
+        process_data.tuvo_intervencion_api = True
+        
+    db.commit()
+    db.refresh(case)
+    
+    return case
+

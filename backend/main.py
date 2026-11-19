@@ -9,7 +9,7 @@ from email.message import EmailMessage
 import models
 import schemas
 import auth
-from routes import users, sites, cases, fields, globals, sessions, webhooks, export, appointments, topics
+from routes import users, sites, cases, fields, globals, sessions, webhooks, export, appointments, topics, limesurvey
 from database import get_db, engine
 from config import settings
 import scheduler
@@ -34,6 +34,7 @@ app.include_router(webhooks.router)
 app.include_router(export.router)
 app.include_router(appointments.router)
 app.include_router(topics.router)
+app.include_router(limesurvey.router)
 
 @app.on_event("startup")
 def startup_event():

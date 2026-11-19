@@ -13,6 +13,20 @@ dash.register_page(__name__, path='/coordinator', name='Coordinator Dashboard')
 
 API_URL = os.getenv("API_URL", "http://localhost:8000")
 
+WAITLIST_COLUMNS = [
+    {"name": "ID Caso", "id": "ID Caso", "type": "numeric"},
+    {"name": "Riesgo", "id": "Riesgo"},
+    {"name": "No. Alarmas", "id": "No. Alarmas", "type": "numeric"},
+    {"name": "Grado de Urgencia", "id": "Grado de Urgencia"},
+    {"name": "Nombre", "id": "Nombre"},
+    {"name": "Horario Disponible", "id": "Horario Disponible"},
+    {"name": "Fecha Ingreso", "id": "Fecha Ingreso"},
+    {"name": "Resumen (LimeSurvey)", "id": "Resumen (LimeSurvey)", "presentation": "markdown"},
+    {"name": "Palabras de Riesgo", "id": "Palabras de Riesgo"},
+    {"name": "ID Terapeuta", "id": "ID Terapeuta"},
+    {"name": "Acciones", "id": "Acciones", "presentation": "markdown"},
+]
+
 layout = dbc.Container([
     dcc.Location(id="coord-url"),
     dbc.Row([
@@ -28,11 +42,22 @@ layout = dbc.Container([
         dbc.Tab(
             dbc.Card([
                 dbc.CardBody([
-                    dbc.Button("Sugerir Terapeuta (Asignación Inteligente)", id="btn-smart-match", color="primary", className="mb-2 w-100 fw-bold border-dark"),
+                    dbc.Row([
+                        dbc.Col(
+                            dbc.Button([html.I(className="bi bi-magic me-2"), "Sugerir Terapeuta (Asignación Inteligente)"], id="btn-smart-match", color="primary", className="w-100 fw-semibold shadow-sm"),
+                            width=12, md=7, className="mb-2"
+                        ),
+                        dbc.Col(
+                            dbc.Button([html.I(className="bi bi-arrow-repeat me-2"), "Sincronizar LimeSurvey"], id="btn-sync-limesurvey", color="outline-primary", className="w-100 fw-semibold shadow-sm"),
+                            width=12, md=5, className="mb-2"
+                        )
+                    ], className="mb-2"),
+                    dbc.Alert(id="limesurvey-sync-alert", is_open=False, duration=8000, className="mb-3 small py-2"),
+                    dcc.Store(id="sync-limesurvey-trigger", data=0),
                     html.Div(id="smart-match-result", className="mb-3 text-center"),
                     dash_table.DataTable(
                         id='waitlist-table',
-                        columns=[],
+                        columns=WAITLIST_COLUMNS,
                         data=[],
                         style_table={'overflowX': 'auto'},
                         style_cell={'textAlign': 'left', 'padding': '10px'},
@@ -45,6 +70,12 @@ layout = dbc.Container([
                                 'minWidth': '250px'
                             },
                             {
+                                'if': {'column_id': 'Horario Disponible'},
+                                'whiteSpace': 'normal',
+                                'height': 'auto',
+                                'minWidth': '180px'
+                            },
+                            {
                                 'if': {'column_id': 'Palabras de Riesgo'},
                                 'whiteSpace': 'normal',
                                 'color': 'red',
@@ -53,13 +84,29 @@ layout = dbc.Container([
                         ],
                         row_selectable='single',
                         sort_action='native',
-                        sort_mode='single',
+                        sort_mode='multi',
                         markdown_options={"html": True}
                     ),
+                    html.Div([
+                        html.H5("Derivados de API (Esperando Plan de Consultas)", className="mt-5 mb-3 text-warning"),
+                        dash_table.DataTable(
+                            id='api-waitlist-table',
+                            columns=[],
+                            data=[],
+                            style_table={'overflowX': 'auto'},
+                            style_cell={'textAlign': 'left', 'padding': '10px'},
+                            style_header={'backgroundColor': '#fff3cd', 'fontWeight': 'bold'},
+                            row_selectable='single',
+                            sort_action='native',
+                            sort_mode='single',
+                            markdown_options={"html": True}
+                        ),
+                    ], id="api-waitlist-section", style={"display": "none"}),
                     html.Div(id="dummy-container")
                 ])
             ], className="border-top-0 border-light mb-4 shadow-sm"),
-            label="Lista de Espera"
+            label="Lista de Espera",
+            tab_id="tab-waitlist"
         ),
         dbc.Tab(
             dbc.Card(dbc.CardBody([
@@ -190,7 +237,7 @@ layout = dbc.Container([
             ]), className="border-top-0 border-light mb-4 shadow-sm"),
             label="Clima Laboral"
         ),
-    ]),
+    ], id="coord-tabs", active_tab="tab-waitlist"),
     
     # Export Filter Modal
     dbc.Modal([
@@ -368,16 +415,55 @@ layout = dbc.Container([
 ])
 
 @callback(
+    Output("limesurvey-sync-alert", "children"),
+    Output("limesurvey-sync-alert", "color"),
+    Output("limesurvey-sync-alert", "is_open"),
+    Output("sync-limesurvey-trigger", "data"),
+    Input("btn-sync-limesurvey", "n_clicks"),
+    State("sync-limesurvey-trigger", "data"),
+    State("auth-token", "data"),
+    prevent_initial_call=True
+)
+def handle_sync_limesurvey(n_clicks, current_trigger, token):
+    if not n_clicks or not token:
+        return no_update, no_update, no_update, no_update
+        
+    headers = {"Authorization": f"Bearer {token}"}
+    try:
+        res = requests.post(f"{API_URL}/limesurvey/sync", headers=headers, timeout=20)
+        if res.status_code == 200:
+            data = res.json()
+            report = data.get("report", {})
+            new_cases = report.get('new_cases', 0)
+            high_risks = report.get('high_risk_alerts', 0)
+            msg_children = [
+                html.I(className="bi bi-check-circle-fill me-2"),
+                f"Sincronización con LimeSurvey exitosa: {new_cases} casos procesados en la lista de espera."
+            ]
+            if high_risks > 0:
+                msg_children.append(html.Span(f" ⚠️ {high_risks} con alerta de riesgo clínico.", className="fw-bold ms-2"))
+            return msg_children, "success", True, (current_trigger or 0) + 1
+        else:
+            detail = res.json().get("detail", res.text)
+            return [html.I(className="bi bi-exclamation-triangle-fill me-2"), f"Error en sincronización: {detail}"], "warning", True, no_update
+    except Exception as e:
+        return [html.I(className="bi bi-x-circle-fill me-2"), f"No se pudo conectar al conector de LimeSurvey: {str(e)}"], "danger", True, no_update
+
+@callback(
     Output("waitlist-table", "columns"),
     Output("waitlist-table", "data"),
+    Output("api-waitlist-table", "columns"),
+    Output("api-waitlist-table", "data"),
     Input("coord-url", "pathname"),
+    Input("coord-tabs", "active_tab"),
     Input("assign-modal", "is_open"), # Refresh on close
-    State("auth-token", "data"),
+    Input("sync-limesurvey-trigger", "data"),
+    Input("auth-token", "data"),
     prevent_initial_call=False
 )
-def load_waitlist(pathname, modal_open, token):
+def load_waitlist(pathname, active_tab, modal_open, sync_trigger, token):
     if not token or modal_open:
-        return no_update, no_update
+        return no_update, no_update, no_update, no_update
         
     headers = {"Authorization": f"Bearer {token}"}
     
@@ -386,76 +472,167 @@ def load_waitlist(pathname, modal_open, token):
         if response.status_code == 200:
             cases = response.json()
             if not cases:
-                return [], []
+                return WAITLIST_COLUMNS, [], [], []
                 
             df = pd.json_normalize(cases)
             
-            # Risk Dictionary Logic
-            RISK_WORDS = ["suicidio", "morir", "muerte", "ansiedad", "pánico", "desesperanza", "depresión", "lastimar", "cortar", "depresion", "panico"]
+            # Diccionario completo de Palabras de Cuidado Clínico (basado en la hoja de Variables de Proceso Clínico)
+            # Mapeo (variante_a_buscar -> etiqueta_canónica) para no contar doble con/sin acento
+            RISK_KEYWORDS_MAP = {
+                # Ideación e intentos suicidas
+                "suicidio": "SUICIDIO", "suicida": "SUICIDA", "suicidarme": "SUICIDIO",
+                "morir": "MORIR", "morirme": "MORIR", "muerte": "MUERTE",
+                "matarme": "MATARME", "quitarme la vida": "QUITARME LA VIDA", "no quiero vivir": "NO QUIERO VIVIR",
+                # Autolesiones
+                "autolesión": "AUTOLESIONES", "autolesion": "AUTOLESIONES", "autolesiones": "AUTOLESIONES",
+                "cortar": "CORTAR", "cortarme": "CORTAR", "lastimar": "LASTIMAR", "lastimarme": "LASTIMAR", "hacerme daño": "AUTOLESIONES",
+                # Violencia (intrafamiliar, género, pareja, criminal, sexual)
+                "violencia": "VIOLENCIA", "maltrato": "MALTRATO", "golpes": "GOLPES",
+                "abuso": "ABUSO", "acoso": "ACOSO", "violación": "VIOLACIÓN", "violacion": "VIOLACIÓN",
+                "agresión": "AGRESIÓN", "agresion": "AGRESIÓN", "amenaza": "AMENAZA",
+                # Alucinaciones / Crisis / Psiquiatría
+                "alucinación": "ALUCINACIONES", "alucinacion": "ALUCINACIONES", "alucinaciones": "ALUCINACIONES",
+                "delirio": "DELIRIO", "crisis": "CRISIS", "emergencia": "EMERGENCIA", "urgencia": "URGENCIA",
+                "internamiento": "INTERNAMIENTO", "psiquiatría": "PSIQUIATRÍA", "psiquiatria": "PSIQUIATRÍA",
+                # Trastornos en la alimentación
+                "anorexia": "ANOREXIA", "bulimia": "BULIMIA", "atracón": "ATRACÓN", "atracon": "ATRACÓN",
+                "vomitar": "VÓMITO/PURGA", "trastorno alimenticio": "TRASTORNO ALIMENTACIÓN",
+                "alimentación": "ALIMENTACIÓN", "alimentacion": "ALIMENTACIÓN",
+                # Consumo problemático de sustancias
+                "consumo": "CONSUMO SUSTANCIAS", "sustancias": "CONSUMO SUSTANCIAS",
+                "adicción": "ADICCIÓN", "adiccion": "ADICCIÓN", "droga": "DROGAS", "drogas": "DROGAS",
+                "alcohol": "ALCOHOL", "marihuana": "MARIHUANA", "opioides": "OPIOIDES",
+                "heroína": "HEROÍNA", "heroina": "HEROÍNA", "solventes": "SOLVENTES", "cristal": "CRISTAL",
+                # Estado afectivo y duelos
+                "depresión": "DEPRESIÓN", "depresion": "DEPRESIÓN",
+                "ansiedad": "ANSIEDAD", "pánico": "PÁNICO", "panico": "PÁNICO",
+                "desesperanza": "DESESPERANZA", "vacío": "VACÍO", "vacio": "VACÍO",
+                "tristeza": "TRISTEZA", "soledad": "SOLEDAD",
+                "duelo": "DUELO", "pérdida": "PÉRDIDA", "perdida": "PÉRDIDA",
+            }
             
-            def extract_risk_words(text):
-                if not isinstance(text, str): return ""
-                found_words = []
+            def get_canonical_risks(text):
+                if not isinstance(text, str): return []
                 lower_text = text.lower()
-                for w in RISK_WORDS:
-                    if w in lower_text:
-                        found_words.append(w.upper())
-                return ", ".join(found_words)
+                found = []
+                for kw, canonical in RISK_KEYWORDS_MAP.items():
+                    if kw in lower_text and canonical not in found:
+                        found.append(canonical)
+                return found
+
+            def extract_risk_words(text):
+                return ", ".join(get_canonical_risks(text))
+
+            def count_risk_words(text):
+                return len(get_canonical_risks(text))
 
             def get_risk_dot(row):
-                text = row.get('participant.metadata_json.resumen_caso', row.get('participant.limesurvey_summary', ''))
-                if not isinstance(text, str): text = ''
-                lower_text = text.lower()
-                risk_count = sum(1 for w in RISK_WORDS if w in lower_text)
-                
+                risk_count = int(row.get('No. Alarmas', 0))
                 if risk_count == 0:
-                    return "🟢"
-                elif risk_count <= 1:
-                    return "🟡"
+                    return "1 🟢 Bajo"
+                elif risk_count == 1:
+                    return "2 🟡 Medio"
                 else:
-                    return "🔴"
+                    return "3 🔴 Alto"
 
             if 'participant.metadata_json.resumen_caso' in df.columns and df['participant.metadata_json.resumen_caso'].notna().any():
-                df['Resumen (LimeSurvey)'] = df['participant.metadata_json.resumen_caso'].fillna('Sin resumen')
-                df['Palabras de Riesgo'] = df['participant.metadata_json.resumen_caso'].apply(extract_risk_words)
-                df['Riesgo'] = df.apply(get_risk_dot, axis=1)
+                raw_summary = df['participant.metadata_json.resumen_caso'].fillna('Sin resumen')
             elif 'participant.limesurvey_summary' in df.columns:
-                df['Resumen (LimeSurvey)'] = df['participant.limesurvey_summary'].fillna('Sin resumen')
-                df['Palabras de Riesgo'] = df['participant.limesurvey_summary'].apply(extract_risk_words)
-                df['Riesgo'] = df.apply(get_risk_dot, axis=1)
+                raw_summary = df['participant.limesurvey_summary'].fillna('Sin resumen')
             else:
-                df['Resumen (LimeSurvey)'] = 'Sin resumen'
-                df['Palabras de Riesgo'] = ''
-                df['Riesgo'] = '🟢'
+                raw_summary = pd.Series(['Sin resumen'] * len(df), index=df.index)
 
-            # Filter for waiting ONLY for the waitlist table
-            waitlist_df = df[df['status'] == 'waiting'].copy()
-            if waitlist_df.empty:
-                return [], []
+            df['Resumen (LimeSurvey)'] = raw_summary
+            df['Palabras de Riesgo'] = raw_summary.apply(extract_risk_words)
+            df['No. Alarmas'] = raw_summary.apply(count_risk_words)
+            df['Riesgo'] = df.apply(get_risk_dot, axis=1)
+
+            # Extraer Grado de Urgencia (pregunta 'sentimiento': Muy mal, Mal, Regular, Bien, Muy Bien)
+            URGENCY_MAP = {
+                "muy mal": "5 🔴 Muy mal",
+                "mal": "4 🟠 Mal",
+                "regular": "3 🟡 Regular",
+                "bien": "2 🟢 Bien",
+                "muy bien": "1 🟢 Muy bien",
+            }
+            def resolve_urgency(row):
+                val = row.get('participant.metadata_json.sentimiento', '')
+                if not isinstance(val, str) or not val.strip():
+                    # Intentar extraer de Resumen (LimeSurvey) si viene como '**Sentimiento:** Valor'
+                    txt = str(row.get('Resumen (LimeSurvey)', ''))
+                    for part in txt.split("|"):
+                        p = part.strip()
+                        if p.lower().startswith("**sentimiento:**") or p.lower().startswith("sentimiento:"):
+                            val = p.split(":", 1)[1].replace("**", "").strip()
+                            break
+                clean_val = str(val).strip().lower()
+                if clean_val in URGENCY_MAP:
+                    return URGENCY_MAP[clean_val]
+                return str(val).strip() if str(val).strip() else "0 ⚪ N/D"
+
+            df['Grado de Urgencia'] = df.apply(resolve_urgency, axis=1)
+
+            if 'participant.metadata_json.horarios_disponibles' in df.columns:
+                df['Horario Disponible'] = df['participant.metadata_json.horarios_disponibles'].fillna('').replace('', 'Por definir')
+            else:
+                df['Horario Disponible'] = 'Por definir'
+
+            # Limpiar prefijos '**Horarios:**' y '**Sentimiento:**' del resumen para que no se dupliquen con sus columnas
+            def clean_summary_fields(text):
+                if not isinstance(text, str):
+                    return "Sin resumen"
+                parts = [
+                    p.strip() for p in text.split("|")
+                    if not p.strip().startswith("**Horarios:**") and not p.strip().startswith("**Sentimiento:**")
+                ]
+                return " | ".join(parts) if parts else text
+
+            df['Resumen (LimeSurvey)'] = df['Resumen (LimeSurvey)'].apply(clean_summary_fields)
+
+            if 'process_data.tuvo_intervencion_api' not in df.columns:
+                df['process_data.tuvo_intervencion_api'] = False
                 
-            waitlist_df['created_at'] = waitlist_df['created_at'].apply(lambda x: x[:10] if isinstance(x, str) else "")
-            waitlist_df = waitlist_df[['id', 'Riesgo', 'participant.full_name', 'status', 'created_at', 'Resumen (LimeSurvey)', 'Palabras de Riesgo', 'therapist_id']]
-            waitlist_df.columns = ['ID Caso', 'Riesgo', 'Nombre', 'Estado', 'Fecha Ingreso', 'Resumen (LimeSurvey)', 'Palabras de Riesgo', 'ID Terapeuta']
+            # Filter for waiting ONLY for the waitlist table
+            base_waitlist_df = df[df['status'] == 'waiting'].copy()
+            if base_waitlist_df.empty:
+                return WAITLIST_COLUMNS, [], [], []
+                
+            # Split into regular waitlist and API waitlist
+            api_waitlist_df = base_waitlist_df[base_waitlist_df['process_data.tuvo_intervencion_api'] == True].copy()
+            waitlist_df = base_waitlist_df[base_waitlist_df['process_data.tuvo_intervencion_api'] != True].copy()
             
-            # Map status to spanish
-            status_map = {"waiting": "Lista de Espera", "assigned": "Asignado", "active": "Activo", "closed": "Cerrado"}
-            waitlist_df['Estado'] = waitlist_df['Estado'].map(status_map)
-            waitlist_df['ID Terapeuta'] = waitlist_df['ID Terapeuta'].fillna("Sin asignar")
-            
-            # Acciones link to Patient Dashboard
-            waitlist_df['Acciones'] = waitlist_df['ID Caso'].apply(lambda x: f"[Ver/Editar](/patient/{x})")
-            
-            # Set markdown presentation for columns
-            columns = [{"name": i, "id": i} for i in waitlist_df.columns]
-            for col in columns:
-                if col['id'] in ['Resumen (LimeSurvey)', 'Acciones']:
-                    col['presentation'] = 'markdown'
+            def format_df(df_to_format):
+                if df_to_format.empty:
+                    return WAITLIST_COLUMNS, []
+                df_to_format['created_at'] = df_to_format['created_at'].apply(lambda x: x[:10] if isinstance(x, str) else "")
+                df_to_format = df_to_format[[
+                    'id', 'Riesgo', 'No. Alarmas', 'Grado de Urgencia',
+                    'participant.full_name', 'Horario Disponible', 'created_at',
+                    'Resumen (LimeSurvey)', 'Palabras de Riesgo', 'therapist_id'
+                ]]
+                df_to_format.columns = [
+                    'ID Caso', 'Riesgo', 'No. Alarmas', 'Grado de Urgencia',
+                    'Nombre', 'Horario Disponible', 'Fecha Ingreso',
+                    'Resumen (LimeSurvey)', 'Palabras de Riesgo', 'ID Terapeuta'
+                ]
+                
+                df_to_format['ID Terapeuta'] = df_to_format['ID Terapeuta'].fillna("Sin asignar")
+                
+                # Acciones link to Patient Dashboard
+                df_to_format['Acciones'] = df_to_format['ID Caso'].apply(lambda x: f"[Ver/Editar](/patient/{x})")
+                
+                return WAITLIST_COLUMNS, df_to_format.to_dict('records')
 
-            return columns, waitlist_df.to_dict('records')
+            wl_cols, wl_data = format_df(waitlist_df)
+            if api_waitlist_df.empty:
+                api_cols, api_data = [], []
+            else:
+                api_cols, api_data = format_df(api_waitlist_df)
+            return wl_cols, wl_data, api_cols, api_data
     except Exception as e:
         print(f"Error cargando datos de espera: {e}")
     
-    return [], []
+    return WAITLIST_COLUMNS, [], [], []
 
 @callback(
     Output("site-metrics-pie", "figure"),
@@ -464,10 +641,11 @@ def load_waitlist(pathname, modal_open, token):
     Output("kpi-active", "children"),
     Output("kpi-therapists", "children"),
     Input("coord-url", "pathname"),
-    State("auth-token", "data"),
+    Input("auth-token", "data"),
+    Input("sync-limesurvey-trigger", "data"),
     prevent_initial_call=False
 )
-def load_site_metrics(pathname, token):
+def load_site_metrics(pathname, token, sync_trigger=None):
     if not token:
         return go.Figure(), [], "0", "0", "0"
         
@@ -726,6 +904,80 @@ def display_therapist_metrics(therapist_id, token):
         
     return html.Div(f"No se pudieron cargar las analíticas profundas.", className="text-danger mt-3")
 
+def _parse_student_slots(horario_str: str):
+    """
+    Convierte una cadena como 'Miércoles (Mediodía), Viernes (Mediodía)'
+    en una lista de tuplas (weekday_0_to_6, franja_code).
+    """
+    if not isinstance(horario_str, str) or not horario_str.strip() or horario_str == "Por definir":
+        return []
+    day_to_wd = {
+        "lunes": 0, "martes": 1, "miércoles": 2, "miercoles": 2,
+        "jueves": 3, "viernes": 4, "sábado": 5, "sabado": 5
+    }
+    slots = []
+    for part in horario_str.split(","):
+        p = part.strip().lower()
+        wd = next((w for d_name, w in day_to_wd.items() if d_name in p), None)
+        if wd is None:
+            continue
+        if "matutino" in p:
+            slots.append((wd, "MAT"))
+        elif "mediod" in p or "intermedio" in p:
+            slots.append((wd, "MED"))
+        elif "vespertino" in p:
+            slots.append((wd, "VES"))
+    return slots
+
+
+def _rank_therapists_for_student(therapists, cases, horario_str: str):
+    """
+    Evalúa a cada terapeuta de la sede cruzando:
+    1. Sus sesiones agendadas contra los bloques (Día x Franja) solicitados por el alumno.
+    2. Su carga total de casos activos/asignados.
+    """
+    req_slots = _parse_student_slots(horario_str)
+    load_dict = {t["id"]: 0 for t in therapists}
+    conflicts_dict = {t["id"]: 0 for t in therapists}
+
+    for c in cases:
+        th_id = c.get("therapist_id")
+        status = str(c.get("status", "")).lower()
+        if th_id in load_dict and status in ["assigned", "active"]:
+            load_dict[th_id] += 1
+            for s in c.get("sessions", []):
+                if s.get("status") == "cancelled":
+                    continue
+                try:
+                    dt = pd.to_datetime(s.get("session_date"))
+                    wd = dt.weekday()
+                    hr = dt.hour
+                    fr = "MAT" if hr < 12 else ("MED" if hr < 15 else "VES")
+                    if (wd, fr) in req_slots:
+                        conflicts_dict[th_id] += 1
+                except Exception:
+                    pass
+
+    ranked = []
+    for t in therapists:
+        tid = t["id"]
+        t_name = t.get("full_name") or t["email"].split("@")[0].capitalize()
+        active_load = load_dict.get(tid, 0)
+        slot_conflicts = conflicts_dict.get(tid, 0)
+        free_req_slots = max(0, len(req_slots) - slot_conflicts) if req_slots else 0
+        ranked.append({
+            "id": tid,
+            "name": t_name,
+            "active_load": active_load,
+            "slot_conflicts": slot_conflicts,
+            "free_req_slots": free_req_slots,
+            "total_req_slots": len(req_slots)
+        })
+
+    ranked.sort(key=lambda x: (x["slot_conflicts"], x["active_load"]))
+    return ranked
+
+
 @callback(
     Output("smart-match-result", "children"),
     Input("btn-smart-match", "n_clicks"),
@@ -737,33 +989,39 @@ def display_therapist_metrics(therapist_id, token):
 def run_smart_matching(n_clicks, selected_rows, data, token):
     if not token: return ""
     if not selected_rows or not data:
-        return html.Span("⚠️ Por favor selecciona un alumno de la lista de espera clickeando el círculo a su izquierda.", className="text-danger")
+        return html.Span("⚠️ Por favor selecciona un alumno de la lista de espera haciendo clic en el círculo a la izquierda de su fila.", className="text-danger")
         
-    case_student = data[selected_rows[0]]["Nombre"]
+    row = data[selected_rows[0]]
+    case_student = row.get("Nombre", "Alumno")
+    horario_alumno = row.get("Horario Disponible", "Por definir")
+    urgencia_alumno = row.get("Grado de Urgencia", "N/D")
     
     headers = {"Authorization": f"Bearer {token}"}
     try:
-        me_res = requests.get(f"{API_URL}/users/me", headers=headers)
-        if me_res.status_code == 200:
-            site_id = me_res.json().get('site_id')
-            stats_res = requests.get(f"{API_URL}/sites/{site_id}/therapist_stats", headers=headers)
-            if stats_res.status_code == 200:
-                stats = stats_res.json()
-                if not stats: return "No existen datos para emitir recomendación."
-                
-                # Algoritmo Base: Ordenar por menos horas en semana
-                sorted_therapists = sorted(stats, key=lambda x: (x['weekly_hours'], x['active_cases']))
-                best_match = sorted_therapists[0]
-                
-                return html.Div([
-                    html.Span("Sugerencia del Motor Matemático: Asignar el paciente "),
-                    html.Strong(f"'{case_student}'"),
-                    html.Span(" al experto "),
-                    html.Strong(f"{best_match['therapist_name']}", className="text-success text-uppercase"),
-                    html.Span(f".   Justificación: Mantiene una ocupación horaria semanal sumamente baja ({best_match['weekly_hours']} Hrs) garantizando una absorción segura protegiendo su salud laboral mental.")
-                ], className="alert alert-success border-success py-2 mt-2")
+        res_t = requests.get(f"{API_URL}/users/therapists", headers=headers)
+        res_c = requests.get(f"{API_URL}/cases", headers=headers)
+        if res_t.status_code == 200 and res_c.status_code == 200:
+            therapists = res_t.json()
+            cases = res_c.json()
+            if not therapists:
+                return dbc.Alert("No hay terapeutas registrados en esta sede para emitir recomendación.", color="warning", className="py-2 mt-2")
+
+            ranked = _rank_therapists_for_student(therapists, cases, horario_alumno)
+            best = ranked[0]
+            horario_note = (
+                f"compatibilidad en {best['free_req_slots']}/{best['total_req_slots']} franjas solicitadas ({horario_alumno})"
+                if best["total_req_slots"] > 0
+                else "horario abierto"
+            )
+            return html.Div([
+                html.Span("⭐ Sugerencia Inteligente (Horario + Carga): Asignar a "),
+                html.Strong(f"'{case_student}'"),
+                html.Span(f" (Urgencia: {urgencia_alumno}) con "),
+                html.Strong(f"{best['name']}", className="text-success text-uppercase"),
+                html.Span(f" — {horario_note} y menor carga activa ({best['active_load']} consultantes activos).")
+            ], className="alert alert-success border-success py-2 mt-2")
     except Exception as e:
-        pass
+        print("Smart match error:", e)
     
     return "No se pudo procesar la asignación."
 
@@ -1160,6 +1418,7 @@ def download_therapist_conglomerate_csv(n_clicks, token):
     Output("selected-case-id", "data"),
     Output("assign-case-info", "children"),
     Output("assign-therapist-dropdown", "options"),
+    Output("assign-therapist-dropdown", "value"),
     Output("waitlist-table", "selected_rows"),
     Output("consultants-directory-table", "selected_rows"),
     Input("waitlist-table", "selected_rows"),
@@ -1176,24 +1435,32 @@ def download_therapist_conglomerate_csv(n_clicks, token):
 def handle_modal(wl_rows, cons_rows, btn_cancel, btn_submit, wl_data, cons_data, token, is_open, therapist_id, selected_case_data):
     ctx = dash.callback_context
     if not ctx.triggered:
-        return is_open, no_update, no_update, no_update, no_update, no_update
+        return is_open, no_update, no_update, no_update, no_update, no_update, no_update
 
     trigger_id = ctx.triggered[0]["prop_id"].split(".")[0]
     headers = {"Authorization": f"Bearer {token}"}
 
     if trigger_id in ["waitlist-table", "consultants-directory-table"]:
+        horario_label = "Por definir"
+        urgencia_label = "N/D"
+        alarmas_label = ""
         if trigger_id == "waitlist-table" and wl_rows:
             case_row = wl_data[wl_rows[0]]
             case_id = case_row['ID Caso']
             name_label = case_row['Nombre']
+            horario_label = case_row.get('Horario Disponible', 'Por definir')
+            urgencia_label = case_row.get('Grado de Urgencia', 'N/D')
+            alarmas_label = case_row.get('Palabras de Riesgo', '')
         elif trigger_id == "consultants-directory-table" and cons_rows:
             case_row = cons_data[cons_rows[0]]
             case_id = case_row['case_id']
             name_label = case_row['full_name']
         else:
-            return is_open, no_update, no_update, no_update, no_update, no_update
+            return is_open, no_update, no_update, no_update, no_update, no_update, no_update
         
         therapists_opts = []
+        recommended_id = None
+        recommended_name = None
         try:
             res_t = requests.get(f"{API_URL}/users/therapists", headers=headers)
             res_c = requests.get(f"{API_URL}/cases", headers=headers)
@@ -1201,26 +1468,38 @@ def handle_modal(wl_rows, cons_rows, btn_cancel, btn_submit, wl_data, cons_data,
             if res_t.status_code == 200 and res_c.status_code == 200:
                 therapists = res_t.json()
                 cases = res_c.json()
-                
-                load_dict = {t['id']: 0 for t in therapists}
-                for c in cases:
-                    th_id = c.get('therapist_id')
-                    status = c.get('status')
-                    if th_id in load_dict and status in ['assigned', 'active']:
-                        load_dict[th_id] += 1
-                        
-                for t in therapists:
-                    name = t['email'].split('@')[0].capitalize()
-                    load = load_dict.get(t['id'], 0)
-                    label = f"{name} ({load} consultantes activos/asignados)"
-                    therapists_opts.append({"label": label, "value": t["id"]})
-        except:
-            pass
+                ranked = _rank_therapists_for_student(therapists, cases, horario_label)
+                for idx, item in enumerate(ranked):
+                    prefix = "⭐ RECOMENDADO: " if idx == 0 else ""
+                    if idx == 0:
+                        recommended_id = item["id"]
+                        recommended_name = item["name"]
+                    if item["total_req_slots"] > 0:
+                        slot_txt = f"Libre en {item['free_req_slots']}/{item['total_req_slots']} horarios del alumno"
+                    else:
+                        slot_txt = "Horario abierto"
+                    label = f"{prefix}{item['name']} — {slot_txt} | {item['active_load']} casos activos"
+                    therapists_opts.append({"label": label, "value": item["id"]})
+        except Exception as e:
+            print("Error ranking therapists in modal:", e)
+
+        info_block = html.Div([
+            html.P([html.Strong(f"Caso #{case_id}: "), html.Span(name_label)], className="mb-1"),
+            html.P([html.Strong("🕒 Horario solicitado por el alumno: "), dbc.Badge(horario_label, color="primary", className="ms-1")], className="mb-1 small"),
+            html.P([html.Strong("⚡ Grado de Urgencia: "), html.Span(urgencia_label)], className="mb-1 small"),
+            html.P([html.Strong("⚠️ Palabras de cuidado detectadas: "), html.Span(alarmas_label or "Ninguna", className="text-danger fw-bold")], className="mb-2 small"),
+            dbc.Alert(
+                f"⭐ Sugerencia automática por compatibilidad de horario y carga: {recommended_name}"
+                if recommended_name else "No hay terapeutas dados de alta en esta sede aún.",
+                color="success" if recommended_name else "warning",
+                className="py-2 small mb-0"
+            )
+        ])
             
-        return True, case_id, f"Asignando/Reasignando terapeuta para el caso #{case_id} ({name_label})", therapists_opts, no_update, no_update
+        return True, case_id, info_block, therapists_opts, recommended_id, no_update, no_update
         
     if trigger_id == "assign-cancel":
-        return False, no_update, no_update, no_update, [], []
+        return False, no_update, no_update, no_update, no_update, [], []
         
     if trigger_id == "assign-submit" and therapist_id:
         case_id = selected_case_data
@@ -1232,11 +1511,11 @@ def handle_modal(wl_rows, cons_rows, btn_cancel, btn_submit, wl_data, cons_data,
                 json={"therapist_id": therapist_id, "status": "assigned"},
                 headers=headers
             )
-            return False, no_update, no_update, no_update, [], []
+            return False, no_update, no_update, no_update, no_update, [], []
         except Exception as e:
             print(f"Error assigning: {e}")
             
-    return is_open, no_update, no_update, no_update, no_update, no_update
+    return is_open, no_update, no_update, no_update, no_update, no_update, no_update
 
 @callback(
     Output("therapists-modal", "is_open"),

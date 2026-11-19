@@ -1,0 +1,340 @@
+/* ==========================================================================
+   ESPORA Design System - Design Engineering & Polish
+   Inspired by Emil Kowalski UI polish and Apple interface ergonomics.
+   ========================================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+:root {
+  /* Core typography */
+  --font-family: 'Inter', -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+  
+  /* Color Palette */
+  --bg-app: #f8fafc;
+  --bg-card: rgba(255, 255, 255, 0.90);
+  --bg-card-solid: #ffffff;
+  --bg-header-frosted: rgba(15, 23, 42, 0.92);
+  
+  /* Text */
+  --text-main: #0f172a;
+  --text-muted: #64748b;
+  --text-subtle: #94a3b8;
+  
+  /* Brand / Clinical Accents */
+  --color-primary: #0284c7;
+  --color-primary-hover: #0369a1;
+  --color-teal: #0f766e;
+  
+  /* Clinical Status Tints */
+  --risk-high-bg: #fef2f2;
+  --risk-high-text: #b91c1c;
+  --risk-high-border: #fecaca;
+  
+  --risk-med-bg: #fffbeb;
+  --risk-med-text: #b45309;
+  --risk-med-border: #fde68a;
+  
+  --risk-low-bg: #f0fdf4;
+  --risk-low-text: #15803d;
+  --risk-low-border: #bbf7d0;
+
+  --status-wait-bg: #eff6ff;
+  --status-wait-text: #1d4ed8;
+
+  /* Borders & Shadows */
+  --border-subtle: #e2e8f0;
+  --border-card: rgba(0, 0, 0, 0.07);
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
+  --shadow-card: 0 4px 16px -2px rgba(15, 23, 42, 0.05), 0 2px 6px -1px rgba(15, 23, 42, 0.02);
+  --shadow-card-hover: 0 10px 25px -4px rgba(15, 23, 42, 0.08), 0 4px 10px -2px rgba(15, 23, 42, 0.03);
+  --shadow-focus: 0 0 0 3px rgba(2, 132, 199, 0.20);
+  
+  /* Motion & Easing */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --duration-fast: 160ms;
+  --duration-normal: 220ms;
+}
+
+/* Base Body Styles */
+body {
+  font-family: var(--font-family);
+  background-color: var(--bg-app);
+  color: var(--text-main);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  margin: 0;
+  padding: 0;
+}
+
+/* ==========================================================================
+   Emil Design Eng: Button Responsiveness & Feedback
+   Buttons must scale to 0.97 on :active to confirm tactile feedback.
+   ========================================================================== */
+.btn, .glass-btn, .nav-link, button {
+  font-family: var(--font-family);
+  border-radius: 8px;
+  font-weight: 500;
+  transition: transform var(--duration-fast) var(--ease-out), 
+              background-color var(--duration-fast) var(--ease-out), 
+              box-shadow var(--duration-fast) var(--ease-out),
+              border-color var(--duration-fast) var(--ease-out);
+}
+
+.btn:active, .glass-btn:active, button:active {
+  transform: scale(0.97) !important;
+}
+
+/* Primary Button Enhancements */
+.btn-primary {
+  background-color: var(--color-primary);
+  border-color: var(--color-primary);
+  box-shadow: 0 1px 2px rgba(2, 132, 199, 0.2);
+}
+
+.btn-primary:hover {
+  background-color: var(--color-primary-hover);
+  border-color: var(--color-primary-hover);
+  box-shadow: 0 4px 12px rgba(2, 132, 199, 0.25);
+}
+
+/* ==========================================================================
+   Cards & Glassmorphism Surfaces
+   ========================================================================== */
+.card, .glass-card {
+  background-color: var(--bg-card);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--border-card) !important;
+  border-radius: 14px !important;
+  box-shadow: var(--shadow-card);
+  transition: box-shadow var(--duration-normal) var(--ease-out), transform var(--duration-normal) var(--ease-out);
+}
+
+.card-header {
+  background-color: transparent !important;
+  border-bottom: 1px solid var(--border-subtle) !important;
+  font-weight: 600;
+  padding: 1rem 1.25rem;
+  letter-spacing: -0.01em;
+}
+
+.card-body {
+  padding: 1.25rem;
+}
+
+/* Glass Buttons */
+.glass-btn {
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-radius: 8px;
+}
+
+/* ==========================================================================
+   Navigation Bar (Apple Style Frosted Glass)
+   ========================================================================== */
+.navbar-espora {
+  background: var(--bg-header-frosted) !important;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 0.65rem 1.5rem;
+  position: sticky;
+  top: 0;
+  z-index: 1020;
+}
+
+.navbar-brand-espora {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-size: 1.2rem;
+  color: #ffffff !important;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.navbar-brand-badge {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  background: rgba(255, 255, 255, 0.15);
+  color: #38bdf8;
+  padding: 0.15rem 0.5rem;
+  border-radius: 9999px;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+}
+
+.nav-link-espora {
+  color: #cbd5e1 !important;
+  font-weight: 500;
+  padding: 0.4rem 0.8rem !important;
+  border-radius: 6px;
+  transition: all var(--duration-fast) var(--ease-out);
+}
+
+.nav-link-espora:hover {
+  color: #ffffff !important;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* ==========================================================================
+   Dash DataTable Polish (Clean, Functional & Readable)
+   ========================================================================== */
+.dash-table-container {
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  background: #ffffff;
+  box-shadow: var(--shadow-sm);
+}
+
+.dash-spreadsheet-container .dash-spreadsheet-inner th {
+  background-color: #f8fafc !important;
+  color: #475569 !important;
+  font-weight: 600 !important;
+  font-size: 0.85rem !important;
+  letter-spacing: 0.01em;
+  border-bottom: 2px solid var(--border-subtle) !important;
+  border-top: none !important;
+  padding: 12px 14px !important;
+}
+
+.dash-spreadsheet-container .dash-spreadsheet-inner td {
+  font-size: 0.88rem !important;
+  color: var(--text-main) !important;
+  border-bottom: 1px solid #f1f5f9 !important;
+  padding: 11px 14px !important;
+  vertical-align: middle;
+}
+
+.dash-spreadsheet-container .dash-spreadsheet-inner tr:hover td {
+  background-color: #f8fafc !important;
+}
+
+/* Selected row highlight */
+.dash-spreadsheet-container .dash-spreadsheet-inner tr.selected td {
+  background-color: #f0f9ff !important;
+}
+
+/* ==========================================================================
+   Status & Risk Pills (Apple-inspired Tints)
+   ========================================================================== */
+.badge-pill-risk-alto, .badge-danger-soft {
+  background-color: var(--risk-high-bg) !important;
+  color: var(--risk-high-text) !important;
+  border: 1px solid var(--risk-high-border);
+  font-weight: 600;
+  padding: 0.28rem 0.65rem;
+  border-radius: 9999px;
+  font-size: 0.78rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.badge-pill-risk-medio, .badge-warning-soft {
+  background-color: var(--risk-med-bg) !important;
+  color: var(--risk-med-text) !important;
+  border: 1px solid var(--risk-med-border);
+  font-weight: 600;
+  padding: 0.28rem 0.65rem;
+  border-radius: 9999px;
+  font-size: 0.78rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.badge-pill-risk-bajo, .badge-success-soft {
+  background-color: var(--risk-low-bg) !important;
+  color: var(--risk-low-text) !important;
+  border: 1px solid var(--risk-low-border);
+  font-weight: 600;
+  padding: 0.28rem 0.65rem;
+  border-radius: 9999px;
+  font-size: 0.78rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+/* ==========================================================================
+   Inputs, Forms & Focus Rings
+   ========================================================================== */
+.form-control, .form-select {
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+  padding: 0.55rem 0.85rem;
+  font-size: 0.92rem;
+  transition: border-color var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out);
+}
+
+.form-control:focus, .form-select:focus {
+  border-color: var(--color-primary);
+  box-shadow: var(--shadow-focus);
+  outline: none;
+}
+
+/* ==========================================================================
+   Modal Polish
+   ========================================================================== */
+.modal-content {
+  border: 1px solid var(--border-card) !important;
+  border-radius: 16px !important;
+  box-shadow: 0 20px 40px -10px rgba(15, 23, 42, 0.2) !important;
+  overflow: hidden;
+}
+
+.modal-header {
+  border-bottom: 1px solid var(--border-subtle);
+  padding: 1.25rem 1.5rem;
+  background-color: #ffffff;
+}
+
+.modal-title {
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  font-size: 1.15rem;
+}
+
+.modal-body {
+  padding: 1.5rem;
+}
+
+.modal-footer {
+  border-top: 1px solid var(--border-subtle);
+  padding: 1rem 1.5rem;
+  background-color: #f8fafc;
+}
+
+/* ==========================================================================
+   Tabs Ergonomics
+   ========================================================================== */
+.nav-tabs {
+  border-bottom: 2px solid var(--border-subtle) !important;
+  gap: 0.5rem;
+}
+
+.nav-tabs .nav-link {
+  border: none !important;
+  color: var(--text-muted) !important;
+  font-weight: 500;
+  padding: 0.6rem 1rem;
+  border-radius: 8px 8px 0 0 !important;
+  position: relative;
+  transition: color var(--duration-fast) var(--ease-out);
+}
+
+.nav-tabs .nav-link:hover {
+  color: var(--text-main) !important;
+}
+
+.nav-tabs .nav-link.active {
+  color: var(--color-primary) !important;
+  font-weight: 600;
+  background: transparent !important;
+  border-bottom: 2px solid var(--color-primary) !important;
+  margin-bottom: -2px;
+}

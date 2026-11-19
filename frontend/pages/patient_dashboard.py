@@ -22,7 +22,9 @@ def layout(case_id=None, **kwargs):
             dbc.Col(html.H2(id="patient-title", className="my-4 fw-bold text-primary"), width=6),
             dbc.Col([
                 dbc.Button("Volver al Panel", href="/therapist", color="secondary", className="mt-4 float-end glass-btn ms-2"),
-                dbc.Button("📥 Descargar Historial Completo", id="btn-download-history", color="info", className="mt-4 float-end glass-btn"),
+                dbc.Button("🚀 Derivar a Plan de Consultas", id="btn-refer-api", color="warning", className="mt-4 float-end glass-btn ms-2"),
+                dbc.Button("✉️ Enviar Correo", id="btn-open-email-modal", color="primary", className="mt-4 float-end glass-btn ms-2"),
+                dbc.Button("📥 Descargar Historial", id="btn-download-history", color="info", className="mt-4 float-end glass-btn"),
                 dcc.Download(id="download-history-file")
             ], width=6)
         ]),
@@ -68,7 +70,12 @@ def layout(case_id=None, **kwargs):
                 dbc.Card([
                     dbc.CardHeader(html.H5("Historial de Evaluaciones Clínicas")),
                     dbc.CardBody([
-                        dbc.Button("➕ Nueva Captura Clínica", id="btn-new-submission", color="primary", className="w-100 mb-4"),
+                        dbc.Row([
+                            dbc.Col(dbc.Button("➕ Nueva Captura Clínica", id="btn-new-submission", color="primary", className="w-100 mb-2"), width=12, md=6),
+                            dbc.Col(dbc.Button("🔄 Sincronizar LimeSurvey", id="btn-sync-patient-ls", color="outline-primary", className="w-100 mb-2"), width=12, md=6),
+                        ], className="mb-2"),
+                        dbc.Alert(id="patient-ls-sync-alert", is_open=False, duration=6000, className="small py-2 mb-3"),
+                        dcc.Store(id="patient-ls-sync-trigger", data=0),
                         dcc.Loading(
                             type="circle",
                             children=html.Div(id="submissions-timeline-container", className="mt-3")
@@ -507,7 +514,50 @@ def layout(case_id=None, **kwargs):
                 dbc.Button("Cancelar", id="btn-cancel-edit-session", className="ms-auto", color="secondary"),
                 dbc.Button("Guardar Cambios de Sesión", id="btn-submit-edit-session", color="primary")
             ])
-        ], id="edit-session-modal", is_open=False, size="lg")
+        ], id="edit-session-modal", is_open=False, size="lg"),
+        
+        # Modal para Enviar Correo al Consultante
+        dbc.Modal([
+            dbc.ModalHeader(dbc.ModalTitle("✉️ Enviar Correo al Consultante")),
+            dbc.ModalBody([
+                dbc.Label("Tipo de Correo:", className="fw-bold"),
+                dbc.RadioItems(
+                    id="email-template-type",
+                    options=[
+                        {"label": "📅 Recordar Próxima Cita", "value": "appointment"},
+                        {"label": "📋 Enviar Formulario / Cuestionario", "value": "form"},
+                        {"label": "✏️ En Blanco (Libre)", "value": "blank"}
+                    ],
+                    value="appointment",
+                    inline=True,
+                    className="mb-3 text-primary"
+                ),
+                
+                html.Div([
+                    dbc.Label("Seleccionar Formulario / Cuestionario:"),
+                    dcc.Dropdown(
+                        id="email-form-select",
+                        placeholder="Selecciona una plantilla de cuestionario...",
+                        className="mb-3"
+                    )
+                ], id="div-email-form-select", style={"display": "none"}),
+                
+                dbc.Label("Correo Destinatario:"),
+                dbc.Input(id="email-recipient-input", type="email", placeholder="correo@ejemplo.com", className="mb-3"),
+                
+                dbc.Label("Asunto del Correo:"),
+                dbc.Input(id="email-subject-input", type="text", placeholder="Escribe el asunto...", className="mb-3"),
+                
+                dbc.Label("Cuerpo del Mensaje (Editable):"),
+                dbc.Textarea(id="email-body-textarea", rows=8, placeholder="Escribe o modifica aquí el cuerpo del correo...", className="mb-3"),
+                
+                dbc.Alert(id="email-send-alert", is_open=False, color="success", className="mt-3")
+            ]),
+            dbc.ModalFooter([
+                dbc.Button("Cancelar", id="btn-cancel-email-modal", className="ms-auto", color="secondary"),
+                dbc.Button("📤 Enviar Correo", id="btn-send-email-submit", color="success")
+            ])
+        ], id="email-patient-modal", is_open=False, size="lg")
     ], fluid=True, className="py-4")
 
 # Callbacks
@@ -610,13 +660,38 @@ def load_patient_data(case_id, modal_open, edit_modal_open, token):
     return "Error cargando paciente", html.P("No se pudo cargar la información.", className="text-danger"), []
 
 @callback(
+    Output("patient-ls-sync-alert", "children"),
+    Output("patient-ls-sync-alert", "color"),
+    Output("patient-ls-sync-alert", "is_open"),
+    Output("patient-ls-sync-trigger", "data"),
+    Input("btn-sync-patient-ls", "n_clicks"),
+    State("patient-ls-sync-trigger", "data"),
+    State("auth-token", "data"),
+    prevent_initial_call=True
+)
+def handle_patient_ls_sync(n_clicks, current_trigger, token):
+    if not n_clicks or not token:
+        return no_update, no_update, no_update, no_update
+    headers = {"Authorization": f"Bearer {token}"}
+    try:
+        res = requests.post(f"{API_URL}/limesurvey/sync", headers=headers, timeout=25)
+        if res.status_code == 200:
+            report = res.json().get("report", {})
+            f_subs = report.get("followup_submissions", 0)
+            return f"✓ Sincronización con LimeSurvey completada ({f_subs} cuestionarios de seguimiento nuevos).", "success", True, (current_trigger or 0) + 1
+        return f"Error al sincronizar: {res.text}", "warning", True, no_update
+    except Exception as e:
+        return f"Error de conexión con LimeSurvey: {str(e)}", "danger", True, no_update
+
+@callback(
     Output("submissions-timeline-container", "children"),
     Input("current-case-id", "data"),
     Input("new-submission-modal", "is_open"), # Refresh after saving
     Input("quick-submission-alert", "is_open"), # Refresh after saving quick submission
-    State("auth-token", "data")
+    Input("patient-ls-sync-trigger", "data"),
+    Input("auth-token", "data")
 )
-def load_submissions(case_id, modal_open, quick_alert_open, token):
+def load_submissions(case_id, modal_open, quick_alert_open, ls_sync_trigger, token):
     if not token or not case_id:
         return dash.no_update
         
@@ -1457,3 +1532,214 @@ def download_patient_history(n_clicks, case_id, token):
     except Exception as e:
         print("Error downloading patient history:", e)
     return dash.no_update
+
+
+# --- Callbacks para Envío de Correos al Consultante ---
+
+@callback(
+    Output("email-patient-modal", "is_open"),
+    Input("btn-open-email-modal", "n_clicks"),
+    Input("btn-cancel-email-modal", "n_clicks"),
+    State("email-patient-modal", "is_open"),
+    prevent_initial_call=True
+)
+def toggle_email_modal(open_clicks, cancel_clicks, is_open):
+    return not is_open
+
+@callback(
+    Output("div-email-form-select", "style"),
+    Output("email-form-select", "options"),
+    Input("email-template-type", "value"),
+    Input("email-patient-modal", "is_open"),
+    State("auth-token", "data"),
+    prevent_initial_call=True
+)
+def handle_email_template_type(template_type, is_open, token):
+    form_select_style = {"display": "block"} if template_type == "form" else {"display": "none"}
+    
+    options = [
+        {"label": "📋 Información Complementaria de Inicio (LimeSurvey #228334)", "value": "LS_228334"},
+        {"label": "🏁 Formato de Egreso y Satisfacción CRES-4 (LimeSurvey #338334)", "value": "LS_338334"},
+    ]
+    if token and is_open:
+        headers = {"Authorization": f"Bearer {token}"}
+        try:
+            res = requests.get(f"{API_URL}/fields/templates", headers=headers)
+            if res.status_code == 200:
+                templates = res.json()
+                for t in templates:
+                    options.append({"label": t["name"], "value": t["name"]})
+        except Exception as e:
+            print("Error loading form templates for email:", e)
+            
+    return form_select_style, options
+
+@callback(
+    Output("email-recipient-input", "value"),
+    Output("email-subject-input", "value"),
+    Output("email-body-textarea", "value"),
+    Input("email-patient-modal", "is_open"),
+    Input("email-template-type", "value"),
+    Input("email-form-select", "value"),
+    State("current-case-id", "data"),
+    State("auth-token", "data"),
+    prevent_initial_call=True
+)
+def update_email_content(is_open, template_type, form_name, case_id, token):
+    if not is_open or not case_id or not token:
+        return dash.no_update, dash.no_update, dash.no_update
+
+    headers = {"Authorization": f"Bearer {token}"}
+    participant_email = ""
+    participant_name = "Consultante"
+    participant_folio = ""
+    participant_account = ""
+    therapist_name = "Tu terapeuta asignado"
+    next_session_str = "No agendada aún"
+    next_session_modality = "Por definir"
+
+    try:
+        # Fetch current user info for therapist name
+        user_res = requests.get(f"{API_URL}/users/me", headers=headers)
+        if user_res.status_code == 200:
+            user_data = user_res.json()
+            therapist_name = user_data.get("full_name") or user_data.get("email", "").split("@")[0].capitalize()
+            
+        # Fetch case data
+        cases_res = requests.get(f"{API_URL}/cases", headers=headers)
+        if cases_res.status_code == 200:
+            cases = cases_res.json()
+            case_data = next((c for c in cases if str(c["id"]) == str(case_id)), None)
+            if case_data:
+                p = case_data.get("participant", {})
+                participant_name = p.get("full_name", "Consultante")
+                participant_email = p.get("email", "")
+                participant_folio = p.get("anonymous_folio", "")
+                participant_account = p.get("student_account", "")
+
+                sessions = case_data.get("sessions", [])
+                now = datetime.now()
+                future_sessions = []
+                for s in sessions:
+                    try:
+                        s_date = datetime.fromisoformat(s["session_date"].replace("Z", "+00:00")).replace(tzinfo=None)
+                        if s_date >= now or s.get("status") == "scheduled":
+                            future_sessions.append((s_date, s))
+                    except Exception:
+                        pass
+                        
+                if future_sessions:
+                    future_sessions.sort(key=lambda x: x[0])
+                    next_s_date, next_s = future_sessions[0]
+                    next_session_str = next_s_date.strftime("%d/%m/%Y a las %H:%M hrs")
+                    modality_val = next_s.get("modality")
+                    if modality_val == "online":
+                        next_session_modality = "En Línea"
+                    elif modality_val == "in_person":
+                        next_session_modality = "Presencial"
+                    elif modality_val:
+                        next_session_modality = str(modality_val).capitalize()
+    except Exception as e:
+        print("Error fetching details for email pre-fill:", e)
+
+    if template_type == "appointment":
+        subject = "Recordatorio de Próxima Cita - Programa ESPORA"
+        body = (
+            f"Hola {participant_name},\n\n"
+            f"Esperamos que te encuentres muy bien.\n"
+            f"Te recordamos que tienes una cita agendada para el {next_session_str} en modalidad {next_session_modality}.\n\n"
+            f"Por favor confírmanos tu asistencia o infórmanos con anticipación en caso de requerir algún cambio de horario.\n\n"
+            f"Saludos cordiales,\n"
+            f"{therapist_name}\n"
+            f"Programa ESPORA"
+        )
+    elif template_type == "form":
+        folio_ref = participant_folio or participant_account
+        if form_name == "LS_228334":
+            ls_url = f"https://ls-test.c3.unam.mx/228334?newtest=Y&lang=es-MX&folio={folio_ref}"
+            subject = "Cuestionario de Información de Inicio - Programa ESPORA"
+            body = (
+                f"Hola {participant_name},\n\n"
+                f"Para completar tu expediente clínico de inicio en el Programa ESPORA, te pedimos responder este breve cuestionario (toma menos de 5 minutos):\n\n"
+                f"🔗 Enlace directo: {ls_url}\n"
+                f"📌 Tu Folio ESPORA: {participant_folio or 'N/D'} (o No. de cuenta: {participant_account or 'N/D'})\n\n"
+                f"Muchas gracias,\n"
+                f"{therapist_name}\n"
+                f"Programa ESPORA"
+            )
+        elif form_name == "LS_338334":
+            ls_url = f"https://ls-test.c3.unam.mx/338334?newtest=Y&lang=es-MX&folio={folio_ref}"
+            subject = "Cuestionario de Egreso y Satisfacción (CRES-4) - Programa ESPORA"
+            body = (
+                f"Hola {participant_name},\n\n"
+                f"Queremos conocer tu opinión sobre el Programa ESPORA y sobre la atención que recibiste durante estas semanas con el objetivo de seguir mejorando.\n\n"
+                f"Por favor responde el siguiente cuestionario confidencial de cierre:\n"
+                f"🔗 Enlace directo: {ls_url}\n"
+                f"📌 Tu Folio ESPORA: {participant_folio or 'N/D'} (o No. de cuenta: {participant_account or 'N/D'})\n\n"
+                f"¡Muchas gracias por tu confianza!\n"
+                f"{therapist_name}\n"
+                f"Programa ESPORA"
+            )
+        else:
+            selected_form = form_name or "Cuestionario de Seguimiento"
+            subject = f"Formulario por responder: {selected_form} - Programa ESPORA"
+            body = (
+                f"Hola {participant_name},\n\n"
+                f"Por favor contesta este cuestionario ({selected_form}) antes de nuestra próxima cita.\n\n"
+                f"Puedes ingresar a la plataforma institucional ESPORA con tu correo para completar tus respuestas.\n\n"
+                f"Saludos cordiales,\n"
+                f"{therapist_name}\n"
+                f"Programa ESPORA"
+            )
+    else:  # blank
+        subject = ""
+        body = ""
+
+    return participant_email, subject, body
+
+@callback(
+    Output("email-send-alert", "children"),
+    Output("email-send-alert", "is_open"),
+    Output("email-send-alert", "color"),
+    Input("btn-send-email-submit", "n_clicks"),
+    State("current-case-id", "data"),
+    State("email-recipient-input", "value"),
+    State("email-subject-input", "value"),
+    State("email-body-textarea", "value"),
+    State("email-template-type", "value"),
+    State("auth-token", "data"),
+    prevent_initial_call=True
+)
+def execute_send_email(n_clicks, case_id, recipient, subject, body, email_type, token):
+    if not n_clicks or not case_id or not token:
+        return dash.no_update, False, "danger"
+
+    if not recipient or not recipient.strip():
+        return "Por favor especifica un correo destinatario válido.", True, "danger"
+
+    if not subject or not subject.strip():
+        return "Por favor ingresa un asunto para el correo.", True, "danger"
+
+    if not body or not body.strip():
+        return "El cuerpo del correo no puede estar vacío.", True, "danger"
+
+    headers = {"Authorization": f"Bearer {token}"}
+    payload = {
+        "recipient_email": recipient.strip(),
+        "subject": subject.strip(),
+        "body": body.strip(),
+        "email_type": email_type or "custom"
+    }
+
+    try:
+        res = requests.post(f"{API_URL}/cases/{case_id}/send-email", json=payload, headers=headers)
+        if res.status_code == 200:
+            res_data = res.json()
+            msg = res_data.get("message", f"Correo enviado exitosamente a {recipient}")
+            return msg, True, "success"
+        else:
+            err_msg = res.json().get("detail", res.text)
+            return f"Error al enviar correo: {err_msg}", True, "danger"
+    except Exception as e:
+        return f"Error de conexión al servidor: {str(e)}", True, "danger"
+

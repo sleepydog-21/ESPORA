@@ -1,3 +1,4 @@
+import os
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
@@ -9,7 +10,16 @@ class Settings(BaseSettings):
     mail_port: int = 1025
     mail_sender: str = "noreply@espora.unam.mx"
 
+    # LimeSurvey Connector Settings (C3 Infra or Direct)
+    limesurvey_api_url: str = "https://lsapi.c3.unam.mx"
+    limesurvey_api_key: str = ""
+    limesurvey_rpc_url: str = "https://ls-test.c3.unam.mx/admin/remotecontrol"
+    limesurvey_username: str = "tabare"
+    limesurvey_password: str = ""
+    limesurvey_default_sid: str = "118334"
+    limesurvey_webhook_secret: str = "supersecret123"
+
     class Config:
-        env_file = ".env"
+        env_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
 
 settings = Settings()

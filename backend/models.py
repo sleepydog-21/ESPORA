@@ -12,6 +12,7 @@ class RoleEnum(str, enum.Enum):
     COORDINATOR = "coordinator"
     THERAPIST = "therapist"
     GENERAL_COORDINATOR = "general_coordinator"
+    API_THERAPIST = "api_therapist"
 
 class CaseStatusEnum(str, enum.Enum):
     WAITING = "waiting"

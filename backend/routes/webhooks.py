@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, Body
+import os
+from fastapi import APIRouter, Depends, HTTPException, Body, Header
 from sqlalchemy.orm import Session
 from datetime import datetime
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 import models
 from database import get_db
@@ -14,8 +15,13 @@ router = APIRouter(
 @router.post("/limesurvey")
 def receive_limesurvey_submission(
     payload: Dict[str, Any] = Body(...),
+    x_limesurvey_token: Optional[str] = Header(None),
     db: Session = Depends(get_db)
 ):
+    expected_token = os.getenv("LIMESURVEY_WEBHOOK_SECRET", "supersecret123")
+    if not x_limesurvey_token or x_limesurvey_token != expected_token:
+        raise HTTPException(status_code=401, detail="Invalid or missing X-LimeSurvey-Token")
+
     try:
         # 1. Extraer campos estándar obligatorios para Participante y Caso
         full_name = payload.pop("full_name", None)
@@ -26,16 +32,26 @@ def receive_limesurvey_submission(
         career = payload.pop("career", None)
         gender = payload.pop("gender", "No especificado")
         
+        # Extraer o construir limesurvey_summary
+        limesurvey_summary = payload.pop("limesurvey_summary", None)
+        if not limesurvey_summary:
+            # Construir resumen base con el resto de llaves de texto
+            summary_parts = [f"{k}: {v}" for k, v in payload.items() if isinstance(v, str) and v.strip()]
+            limesurvey_summary = " | ".join(summary_parts) if summary_parts else "Sin resumen dinámico"
+            
         if not full_name or not student_account or not faculty_site_name:
             raise HTTPException(status_code=422, detail="Missing required fields: full_name, student_account, or faculty_site_name")
 
-        # Buscar o crear la facultad/sede
+        # Sanitizar entradas
+        full_name = str(full_name).strip()
+        student_account = str(student_account).strip()
+        faculty_site_name = str(faculty_site_name).strip()
+
+        # Buscar la facultad/sede de forma estricta (o fuzzy fallback).
+        # Para evitar crear sedes basura, fallamos si no existe ninguna coincidencia.
         site = db.query(models.Site).filter(models.Site.name.ilike(f"%{faculty_site_name}%")).first()
         if not site:
-            site = models.Site(name=faculty_site_name)
-            db.add(site)
-            db.commit()
-            db.refresh(site)
+            raise HTTPException(status_code=422, detail=f"Site '{faculty_site_name}' not found. Cannot create unmapped sites via webhook.")
             
         # Verificar si el participante ya existe (por matrícula)
         participant = db.query(models.Participant).filter(models.Participant.student_account == student_account).first()
@@ -47,9 +63,10 @@ def receive_limesurvey_submission(
                 email=email,
                 phone=phone,
                 gender=gender,
-                faculty=faculty_site_name,
+                faculty=site.name,
                 career=career,
-                site_id=site.id
+                site_id=site.id,
+                limesurvey_summary=limesurvey_summary
             )
             db.add(participant)
             db.commit()
@@ -59,6 +76,10 @@ def receive_limesurvey_submission(
             participant.anonymous_folio = f"{site.id:02d}{participant.id:05d}"
             db.commit()
             db.refresh(participant)
+        else:
+            if limesurvey_summary:
+                participant.limesurvey_summary = limesurvey_summary
+                db.commit()
             
         # Crear Caso en estado WAITING (Lista de Espera)
         new_case = models.Case(
@@ -73,7 +94,9 @@ def receive_limesurvey_submission(
         
         # 2. Integración con Formularios Dinámicos
         # Buscar o crear la plantilla autogenerada para LimeSurvey
-        template_name = "Ficha de Ingreso (LimeSurvey)"
+        form_name = payload.pop("form_name", None)
+        template_name = form_name if form_name else "Ficha de Ingreso (LimeSurvey)"
+        
         template = db.query(models.FormTemplate).filter(models.FormTemplate.name == template_name).first()
         if not template:
             template = models.FormTemplate(

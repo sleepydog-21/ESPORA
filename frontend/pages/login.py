@@ -12,16 +12,51 @@ layout = dbc.Container([
     dbc.Row([
         dbc.Col([
             dbc.Card([
-                dbc.CardHeader(html.H4("Identifícate")),
                 dbc.CardBody([
-                    dbc.Alert("Credenciales incorrectas", id="login-alert", color="danger", is_open=False),
-                    dbc.Input(id="login-email", type="email", placeholder="Correo electrónico", className="mb-3"),
-                    dbc.Input(id="login-password", type="password", placeholder="Contraseña", className="mb-3"),
-                    dbc.Button("Ingresar", id="login-btn", color="primary", className="w-100")
-                ])
-            ], className="mt-5 shadow-sm")
-        ], width=12, md=6, lg=4)
-    ], justify="center"),
+                    html.Div([
+                        html.Div("🌿", style={"fontSize": "2.8rem", "lineHeight": "1", "marginBottom": "0.75rem"}),
+                        html.H3("Bienvenido a ESPORA", className="fw-bold mb-1", style={"letterSpacing": "-0.02em"}),
+                        html.P("Plataforma de Salud Mental Universitaria", className="text-muted small mb-4"),
+                    ], className="text-center pt-3"),
+                    
+                    dbc.Alert(
+                        [html.I(className="bi bi-exclamation-triangle-fill me-2"), "Credenciales incorrectas o cuenta inactiva"],
+                        id="login-alert",
+                        color="danger",
+                        className="py-2 small",
+                        is_open=False
+                    ),
+                    
+                    html.Div([
+                        dbc.Label("Correo institucional", className="small fw-semibold text-secondary mb-1"),
+                        dbc.InputGroup([
+                            dbc.InputGroupText(html.I(className="bi bi-envelope")),
+                            dbc.Input(id="login-email", type="email", placeholder="tu.nombre@unam.mx", className="py-2")
+                        ], className="mb-3"),
+                    ]),
+                    
+                    html.Div([
+                        dbc.Label("Contraseña", className="small fw-semibold text-secondary mb-1"),
+                        dbc.InputGroup([
+                            dbc.InputGroupText(html.I(className="bi bi-lock")),
+                            dbc.Input(id="login-password", type="password", placeholder="••••••••", className="py-2")
+                        ], className="mb-4"),
+                    ]),
+                    
+                    dbc.Button(
+                        [html.I(className="bi bi-box-arrow-in-right me-2"), "Iniciar Sesión"],
+                        id="login-btn",
+                        color="primary",
+                        className="w-100 py-2 fw-semibold shadow-sm"
+                    ),
+                    
+                    html.Div([
+                        html.Span("Acceso restringido a personal clínico y coordinadores", className="text-muted", style={"fontSize": "0.75rem"})
+                    ], className="text-center mt-4 pb-2")
+                ], className="p-4")
+            ], className="mt-5 shadow-sm border-0 glass-card")
+        ], width=12, md=8, lg=5, xl=4)
+    ], justify="center", className="min-vh-75 align-items-center"),
     dcc.Location(id="login-url", refresh=True)
 ])
 

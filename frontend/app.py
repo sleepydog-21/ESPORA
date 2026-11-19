@@ -20,23 +20,31 @@ app.layout = html.Div([
     dcc.Store(id="auth-token", storage_type="session"),
     dcc.Store(id="user-data", storage_type="session"),
     
-    dbc.NavbarSimple(
-        children=[
-            dbc.NavItem(dbc.NavLink("Login", href="/login", id="nav-login")),
-            dbc.NavItem(dbc.NavLink("General", href="/general", id="nav-general", style={"display": "none"})),
-            dbc.NavItem(dbc.NavLink("Coordinator", href="/coordinator", id="nav-coordinator", style={"display": "none"})),
-            dbc.NavItem(dbc.NavLink("Panel Therapist", href="/therapist", id="nav-therapist", style={"display": "none"})),
-            dbc.NavItem(dbc.NavLink("Logout", href="/login", id="nav-logout", style={"display": "none"})),
-        ],
-        brand="ESPORA Platform",
-        brand_href="/",
-        color="primary",
-        dark=True,
+    dbc.Navbar(
+        dbc.Container([
+            dbc.NavbarBrand(
+                html.Span([
+                    "🌿 ESPORA",
+                    html.Span("Salud Mental", className="navbar-brand-badge ms-2")
+                ], className="navbar-brand-espora"),
+                href="/",
+                className="d-flex align-items-center"
+            ),
+            dbc.Nav([
+                dbc.NavItem(dbc.NavLink([html.I(className="bi bi-box-arrow-in-right me-1"), "Ingresar"], href="/login", id="nav-login", className="nav-link-espora")),
+                dbc.NavItem(dbc.NavLink([html.I(className="bi bi-pie-chart-fill me-1"), "General"], href="/general", id="nav-general", className="nav-link-espora", style={"display": "none"})),
+                dbc.NavItem(dbc.NavLink([html.I(className="bi bi-person-lines-fill me-1"), "Coordinación"], href="/coordinator", id="nav-coordinator", className="nav-link-espora", style={"display": "none"})),
+                dbc.NavItem(dbc.NavLink([html.I(className="bi bi-heart-pulse-fill me-1"), "Consultorio"], href="/therapist", id="nav-therapist", className="nav-link-espora", style={"display": "none"})),
+                dbc.NavItem(dbc.NavLink([html.I(className="bi bi-box-arrow-right me-1"), "Salir"], href="/login", id="nav-logout", className="nav-link-espora text-danger", style={"display": "none"})),
+            ], className="ms-auto d-flex align-items-center gap-1", navbar=True)
+        ], fluid=True, className="px-4"),
+        className="navbar-espora shadow-sm",
+        dark=True
     ),
     
     dbc.Container(
         dash.page_container,
-        className="mt-4",
+        className="py-4 px-4",
         fluid=True
     )
 ])
