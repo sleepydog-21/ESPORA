@@ -40,6 +40,35 @@ def create_user(
     db.refresh(db_user)
     return db_user
 
+def _send_welcome_email(to_email: str, role_label: str, generic_password: str, site_name: str = ""):
+    import smtplib
+    from email.message import EmailMessage
+    from config import settings
+    try:
+        msg = EmailMessage()
+        sede_txt = f" para la entidad/sede {site_name}" if site_name else ""
+        msg.set_content(
+            f"Hola,\n\n"
+            f"Se ha creado tu cuenta de {role_label}{sede_txt} en la Plataforma Clínica ESPORA.\n\n"
+            f"📧 Usuario (Correo): {to_email}\n"
+            f"🔑 Llave genérica temporal: {generic_password}\n\n"
+            f"Puedes iniciar sesión y cambiar tu contraseña en cualquier momento desde el botón '🔑 Cambiar Contraseña' en la barra superior de la plataforma.\n\n"
+            f"Saludos cordiales,\n"
+            f"Coordinación ESPORA - UNAM"
+        )
+        msg["Subject"] = f"Bienvenido/a a ESPORA - Tu cuenta de {role_label}"
+        msg["From"] = settings.mail_sender
+        msg["To"] = to_email
+        with smtplib.SMTP(settings.mail_server, settings.mail_port, timeout=10) as server:
+            if settings.mail_use_tls:
+                server.starttls()
+            if settings.mail_username and settings.mail_password:
+                server.login(settings.mail_username, settings.mail_password)
+            server.send_message(msg)
+    except Exception as e:
+        print(f"Aviso: No se pudo enviar correo de bienvenida a {to_email}: {e}")
+
+
 @router.post("/therapists/quick", response_model=schemas.UserResponse)
 def create_therapist_quick(
     user: schemas.TherapistQuickCreate,
@@ -48,13 +77,15 @@ def create_therapist_quick(
 ):
     db_user = db.query(models.User).filter(models.User.email == user.email).first()
     if db_user:
-        raise HTTPException(status_code=400, detail="Email already registered")
+        raise HTTPException(status_code=400, detail="El correo electrónico ya está registrado.")
         
     site_id = current_user.site_id if current_user.role == models.RoleEnum.COORDINATOR else user.site_id
     if not site_id:
          raise HTTPException(status_code=400, detail="Site ID must be provided by General Coordinators.")
 
-    hashed_password = auth.get_password_hash("Espora2026!") # Default temp password
+    generic_pwd = "Espora2026!"
+    hashed_password = auth.get_password_hash(generic_pwd)
+    default_name = (user.full_name or "").strip() or user.email.split("@")[0].replace(".", " ").title()
     
     db_user = models.User(
         email=user.email,
@@ -62,12 +93,15 @@ def create_therapist_quick(
         role=models.RoleEnum.THERAPIST,
         site_id=site_id,
         is_active=True,
-        full_name=user.full_name,
+        full_name=default_name,
         phone=user.phone
     )
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
+
+    site_obj = db.query(models.Site).filter(models.Site.id == site_id).first()
+    _send_welcome_email(user.email, "Terapeuta", generic_pwd, site_obj.name if site_obj else "")
     return db_user
 
 @router.post("/coordinators/quick", response_model=schemas.UserResponse)
@@ -78,9 +112,11 @@ def create_coordinator_quick(
 ):
     db_user = db.query(models.User).filter(models.User.email == user.email).first()
     if db_user:
-        raise HTTPException(status_code=400, detail="Email already registered")
+        raise HTTPException(status_code=400, detail="El correo electrónico ya está registrado.")
         
-    hashed_password = auth.get_password_hash("AdminEspora26!") 
+    generic_pwd = "AdminEspora26!"
+    hashed_password = auth.get_password_hash(generic_pwd)
+    default_name = (user.full_name or "").strip() or user.email.split("@")[0].replace(".", " ").title()
     
     db_user = models.User(
         email=user.email,
@@ -88,19 +124,122 @@ def create_coordinator_quick(
         role=models.RoleEnum.COORDINATOR,
         site_id=user.site_id,
         is_active=True,
-        full_name=user.full_name,
+        full_name=default_name,
         phone=user.phone
     )
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
+
+    site_obj = db.query(models.Site).filter(models.Site.id == user.site_id).first()
+    _send_welcome_email(user.email, "Coordinador/a de Sede", generic_pwd, site_obj.name if site_obj else "")
     return db_user
+
+def _generate_recovery_code(email: str, hashed_pwd: str, window_offset: int = 0) -> str:
+    import hmac
+    import hashlib
+    import time
+    from config import settings
+    # Ventanas de 15 minutos (900s)
+    time_bucket = (int(time.time()) // 900) + window_offset
+    msg = f"{email.lower().strip()}:{hashed_pwd}:{time_bucket}".encode("utf-8")
+    digest = hmac.new(settings.secret_key.encode("utf-8"), msg, hashlib.sha256).hexdigest()
+    return str(int(digest[:8], 16) % 1000000).zfill(6)
+
+
+@router.post("/forgot-password")
+def forgot_password(
+    req: schemas.ForgotPasswordRequest,
+    db: Session = Depends(get_db)
+):
+    import smtplib
+    from email.message import EmailMessage
+    from config import settings
+
+    email_clean = req.email.strip()
+    db_user = db.query(models.User).filter(models.User.email.ilike(email_clean)).first()
+    if not db_user:
+        raise HTTPException(status_code=404, detail="No existe ninguna cuenta registrada con ese correo electrónico.")
+
+    code = _generate_recovery_code(db_user.email, db_user.hashed_password, 0)
+    msg = EmailMessage()
+    msg.set_content(
+        f"Hola {db_user.full_name or db_user.email},\n\n"
+        f"Recibimos una solicitud para restablecer tu contraseña en la Plataforma Clínica ESPORA.\n\n"
+        f"🔐 Tu código de verificación de 6 dígitos es: {code}\n"
+        f"(Este código es válido por 30 minutos).\n\n"
+        f"Ingresa este código en la ventana de recuperación de ESPORA junto con tu nueva contraseña.\n\n"
+        f"Si tú no solicitaste este cambio, puedes ignorar este mensaje; tu contraseña actual seguirá intacta.\n\n"
+        f"Saludos cordiales,\n"
+        f"Coordinación ESPORA - UNAM"
+    )
+    msg["Subject"] = f"Código de recuperación de contraseña ({code}) - ESPORA"
+    msg["From"] = settings.mail_sender
+    msg["To"] = db_user.email
+
+    try:
+        with smtplib.SMTP(settings.mail_server, settings.mail_port, timeout=10) as server:
+            if settings.mail_use_tls:
+                server.starttls()
+            if settings.mail_username and settings.mail_password:
+                server.login(settings.mail_username, settings.mail_password)
+            server.send_message(msg)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"No se pudo enviar el correo de recuperación: {str(e)}")
+
+    return {
+        "status": "success",
+        "message": f"Se ha enviado un código de 6 dígitos al correo {db_user.email}."
+    }
+
+
+@router.post("/reset-password")
+def reset_password_with_code(
+    req: schemas.ResetPasswordRequest,
+    db: Session = Depends(get_db)
+):
+    email_clean = req.email.strip()
+    db_user = db.query(models.User).filter(models.User.email.ilike(email_clean)).first()
+    if not db_user:
+        raise HTTPException(status_code=404, detail="No existe ninguna cuenta registrada con ese correo electrónico.")
+
+    valid_codes = [
+        _generate_recovery_code(db_user.email, db_user.hashed_password, 0),
+        _generate_recovery_code(db_user.email, db_user.hashed_password, -1),
+    ]
+    if req.code.strip() not in valid_codes:
+        raise HTTPException(status_code=400, detail="El código de verificación es inválido o ha expirado.")
+
+    if not req.new_password or len(req.new_password.strip()) < 6:
+        raise HTTPException(status_code=400, detail="La nueva contraseña debe tener al menos 6 caracteres.")
+
+    db_user.hashed_password = auth.get_password_hash(req.new_password.strip())
+    db.commit()
+    return {
+        "status": "success",
+        "message": "Contraseña restablecida exitosamente. Ya puedes iniciar sesión con tu nueva contraseña."
+    }
+
+
+@router.post("/me/change-password")
+def change_own_password(
+    req: schemas.PasswordChangeRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_active_user)
+):
+    if not auth.verify_password(req.current_password, current_user.hashed_password):
+        raise HTTPException(status_code=400, detail="La contraseña actual (o llave genérica) es incorrecta.")
+    if not req.new_password or len(req.new_password.strip()) < 6:
+        raise HTTPException(status_code=400, detail="La nueva contraseña debe tener al menos 6 caracteres.")
+    current_user.hashed_password = auth.get_password_hash(req.new_password.strip())
+    db.commit()
+    return {"status": "success", "message": "Tu contraseña ha sido actualizada exitosamente."}
 
 @router.get("/", response_model=List[schemas.UserResponse])
 def read_users(
-    skip: int = 0, limit: int = 100, 
+    skip: int = 0, limit: int = 200, 
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.require_role([models.RoleEnum.ADMIN, models.RoleEnum.COORDINATOR]))
+    current_user: models.User = Depends(auth.require_role([models.RoleEnum.ADMIN, models.RoleEnum.GENERAL_COORDINATOR, models.RoleEnum.COORDINATOR]))
 ):
     query = db.query(models.User)
     

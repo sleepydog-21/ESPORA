@@ -309,12 +309,14 @@ layout = dbc.Container([
 
     # Add Therapist Form Modal
     dbc.Modal([
-        dbc.ModalHeader(dbc.ModalTitle("Registrar Nuevo Terapeuta")),
+        dbc.ModalHeader(dbc.ModalTitle("Alta Rápida de Nuevo Terapeuta")),
         dbc.ModalBody([
-            dbc.Alert(id="add-therapist-alert", is_open=False, duration=3000),
-            dbc.Input(id="add-th-email", type="email", placeholder="Correo Electrónico Institucional (Requerido)", className="mb-3"),
-            html.P("Nota: El terapeuta será dado de alta con la contraseña por defecto 'Espora2026!'", className="text-muted small"),
-            dbc.Input(id="add-th-name", type="text", placeholder="Nombre Completo (Requerido para gráficas)", className="mb-3"),
+            dbc.Alert(id="add-therapist-alert", is_open=False, duration=8000),
+            html.P("Solo necesitas ingresar su correo electrónico. Se le asignará la llave genérica 'Espora2026!' (que podrá cambiar al iniciar sesión desde '🔑 Cambiar Contraseña') y se le enviará un correo de bienvenida.", className="text-muted small mb-3"),
+            dbc.Label("Correo Electrónico Institucional (Requerido):", className="small fw-semibold"),
+            dbc.Input(id="add-th-email", type="email", placeholder="terapeuta@unam.mx", className="mb-3"),
+            dbc.Label("Nombre Completo (Opcional):", className="small fw-semibold"),
+            dbc.Input(id="add-th-name", type="text", placeholder="Opcional (si se omite se toma del correo)", className="mb-3"),
             dbc.Input(id="add-th-phone", type="text", placeholder="Teléfono (Opcional)", className="mb-3"),
             dbc.Input(id="add-th-category", type="number", placeholder="Categoría de Terapeuta (Opcional)", className="mb-3"),
         ]),
@@ -1576,7 +1578,7 @@ def submit_new_therapist(n_clicks, email, name, phone, token):
     try:
         res = requests.post(f"{API_URL}/users/therapists/quick", json=payload, headers=headers)
         if res.status_code == 200:
-            return "¡Terapeuta creado con éxito! Cierra esta ventana para ver los cambios.", "success", True
+            return "✅ Terapeuta creado con éxito. Llave genérica asignada: Espora2026! (se envió correo de bienvenida y podrá cambiar su contraseña al iniciar sesión desde '🔑 Cambiar Contraseña').", "success", True
         else:
             return f"Error: {res.json().get('detail', 'Desconocido')}", "danger", True
     except Exception as e:

@@ -9,6 +9,9 @@ class Settings(BaseSettings):
     mail_server: str = "localhost"
     mail_port: int = 1025
     mail_sender: str = "noreply@espora.unam.mx"
+    mail_username: str = ""
+    mail_password: str = ""
+    mail_use_tls: bool = False
 
     # LimeSurvey Connector Settings (C3 Infra or Direct)
     limesurvey_api_url: str = "https://lsapi.c3.unam.mx"

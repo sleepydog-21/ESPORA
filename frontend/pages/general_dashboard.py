@@ -227,16 +227,16 @@ layout = dbc.Container([
     
     # Create Coordinator Modal
     dbc.Modal([
-        dbc.ModalHeader(dbc.ModalTitle("Alta de Coordinador Local")),
+        dbc.ModalHeader(dbc.ModalTitle("Alta Rápida de Coordinador Local")),
         dbc.ModalBody([
-            html.P("El usuario se creará con la contraseña temporal genérica 'AdminEspora26!'.", className="text-muted small"),
-            dbc.Alert(id="add-coordinator-alert", is_open=False, duration=3000),
-            dbc.Label("Correo Electrónico Institucional:"),
-            dbc.Input(id="add-coord-email", type="email", placeholder="ejemplo@unam.mx", className="mb-3"),
-            dbc.Label("Nombre Completo:"),
-            dbc.Input(id="add-coord-name", type="text", placeholder="Lic. Juan Pérez", className="mb-3"),
-            dbc.Label("Seleccionar Sede a Administrar (Debe existir previamente):"),
-            dcc.Dropdown(id="add-coord-site-dropdown", placeholder="Facultad o Sede...", className="mb-3"),
+            html.P("Solo necesitas ingresar el correo institucional y la entidad/sede. Se le asignará la llave genérica 'AdminEspora26!' (que podrá cambiar al iniciar sesión) y se le enviará por correo.", className="text-muted small"),
+            dbc.Alert(id="add-coordinator-alert", is_open=False, duration=8000),
+            dbc.Label("Correo Electrónico Institucional (Requerido):"),
+            dbc.Input(id="add-coord-email", type="email", placeholder="coordinador@unam.mx", className="mb-3"),
+            dbc.Label("Seleccionar Entidad / Sede a Administrar (Requerido):"),
+            dcc.Dropdown(id="add-coord-site-dropdown", placeholder="Selecciona Facultad, Plantel o Instituto...", className="mb-3"),
+            dbc.Label("Nombre Completo (Opcional):"),
+            dbc.Input(id="add-coord-name", type="text", placeholder="Opcional (si se omite se toma del correo)", className="mb-3"),
         ]),
         dbc.ModalFooter([
             dbc.Button("Registrar Coordinador", id="btn-submit-add-coordinator", color="success", className="ms-auto fw-bold"),
@@ -585,7 +585,7 @@ def submit_new_coordinator(n, email, name, site_id, token):
     try:
         res = requests.post(f"{API_URL}/users/coordinators/quick", json=payload, headers=headers)
         if res.status_code == 200:
-            return "Coordinador creado existosamente y vinculado a la sede. Se le ha asignado la contraseña default 'AdminEspora26!'. Cierra el modal para actualizar el panel.", "success", True
+            return "✅ Coordinador creado exitosamente. Llave genérica asignada: AdminEspora26! (se envió correo de bienvenida y podrá cambiar su contraseña al iniciar sesión desde '🔑 Cambiar Contraseña').", "success", True
         else:
             return f"Error de Servicio: {res.json().get('detail')}", "danger", True
     except Exception as e:

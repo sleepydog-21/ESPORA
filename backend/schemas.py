@@ -36,6 +36,18 @@ class CoordinatorQuickCreate(BaseModel):
     full_name: Optional[str] = None
     phone: Optional[str] = None
 
+class PasswordChangeRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+class ResetPasswordRequest(BaseModel):
+    email: EmailStr
+    code: str
+    new_password: str
+
 class UserUpdate(BaseModel):
     full_name: Optional[str] = None
     phone: Optional[str] = None

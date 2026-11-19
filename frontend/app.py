@@ -35,12 +35,31 @@ app.layout = html.Div([
                 dbc.NavItem(dbc.NavLink([html.I(className="bi bi-pie-chart-fill me-1"), "General"], href="/general", id="nav-general", className="nav-link-espora", style={"display": "none"})),
                 dbc.NavItem(dbc.NavLink([html.I(className="bi bi-person-lines-fill me-1"), "Coordinación"], href="/coordinator", id="nav-coordinator", className="nav-link-espora", style={"display": "none"})),
                 dbc.NavItem(dbc.NavLink([html.I(className="bi bi-heart-pulse-fill me-1"), "Consultorio"], href="/therapist", id="nav-therapist", className="nav-link-espora", style={"display": "none"})),
+                dbc.NavItem(dbc.Button([html.I(className="bi bi-key-fill me-1"), "Cambiar Contraseña"], id="nav-change-pwd", color="outline-light", size="sm", className="ms-2", style={"display": "none"})),
                 dbc.NavItem(dbc.NavLink([html.I(className="bi bi-box-arrow-right me-1"), "Salir"], href="/login", id="nav-logout", className="nav-link-espora text-danger", style={"display": "none"})),
             ], className="ms-auto d-flex align-items-center gap-1", navbar=True)
         ], fluid=True, className="px-4"),
         className="navbar-espora shadow-sm",
         dark=True
     ),
+    
+    dbc.Modal([
+        dbc.ModalHeader(dbc.ModalTitle("🔑 Cambiar Mi Contraseña")),
+        dbc.ModalBody([
+            html.P("Ingresa tu contraseña actual (o la llave genérica temporal que te fue asignada) y define tu nueva contraseña personal.", className="text-muted small mb-3"),
+            dbc.Alert(id="change-pwd-alert", is_open=False, duration=5000, className="py-2 small"),
+            dbc.Label("Contraseña Actual / Llave Genérica:", className="small fw-semibold"),
+            dbc.Input(id="change-pwd-current", type="password", placeholder="Ej. Espora2026! o AdminEspora26!", className="mb-3"),
+            dbc.Label("Nueva Contraseña (mínimo 6 caracteres):", className="small fw-semibold"),
+            dbc.Input(id="change-pwd-new", type="password", placeholder="••••••••", className="mb-3"),
+            dbc.Label("Confirmar Nueva Contraseña:", className="small fw-semibold"),
+            dbc.Input(id="change-pwd-confirm", type="password", placeholder="••••••••", className="mb-2"),
+        ]),
+        dbc.ModalFooter([
+            dbc.Button("Cancelar", id="btn-cancel-change-pwd", color="secondary", outline=True),
+            dbc.Button("Guardar Nueva Contraseña", id="btn-submit-change-pwd", color="primary", className="fw-semibold")
+        ])
+    ], id="change-password-modal", is_open=False),
     
     dbc.Container(
         dash.page_container,

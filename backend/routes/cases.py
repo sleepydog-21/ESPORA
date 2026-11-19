@@ -361,7 +361,11 @@ def send_case_email(
     msg['To'] = target_email
 
     try:
-        with smtplib.SMTP(settings.mail_server, settings.mail_port) as server:
+        with smtplib.SMTP(settings.mail_server, settings.mail_port, timeout=10) as server:
+            if settings.mail_use_tls:
+                server.starttls()
+            if settings.mail_username and settings.mail_password:
+                server.login(settings.mail_username, settings.mail_password)
             server.send_message(msg)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al enviar el correo a través del servidor SMTP: {str(e)}")
