@@ -36,10 +36,13 @@ layout = dbc.Container([
 
     dbc.Row([
         dbc.Col([
+            dbc.Button("🚨 Registrar Alumno en Contención (API)", id="btn-open-api-walkin", color="warning", className="mb-4 float-start fw-semibold shadow-sm"),
             dbc.Button("📅 Agendar Cita Única", id="btn-add-single", color="outline-primary", className="mb-4 float-end mx-2"),
             dbc.Button("🗓️ Iniciar Protocolo Bi-semanal", id="btn-open-protocol", color="primary", className="mb-4 float-end")
         ], width=12)
     ]),
+    dbc.Alert(id="api-walkin-alert", is_open=False, duration=8000, className="mb-3"),
+    dcc.Store(id="api-walkin-reload-trigger", data=0),
 
     dbc.Row([
         # Calendario Semanal
@@ -114,6 +117,83 @@ layout = dbc.Container([
             dbc.Button("Generar y Asignar Sesiones", id="btn-submit-protocol", color="success", className="w-100")
         ])
     ], id="modal-protocol", is_open=False),
+
+    # Modal Registro de Alumno en Contención (API)
+    dbc.Modal([
+        dbc.ModalHeader(dbc.ModalTitle("🚨 Registro de Atención API (Contención / Urgencia)")),
+        dbc.ModalBody([
+            html.P("Registra a un alumno que acude al consultorio para contención o valoración API. Podrás editar su expediente completo y, cuando lo requiera, migrarlo a la Lista de Espera de psicoterapia ESPORA.", className="text-muted small mb-3"),
+            dbc.Row([
+                dbc.Col([
+                    dbc.Label("Nombre Completo del Alumno *", className="small fw-semibold"),
+                    dbc.Input(id="api-w-name", type="text", placeholder="Nombres y Apellidos", className="mb-2"),
+                ], width=12, md=6),
+                dbc.Col([
+                    dbc.Label("No. de Cuenta *", className="small fw-semibold"),
+                    dbc.Input(id="api-w-account", type="text", placeholder="Ej. 318000000", className="mb-2"),
+                ], width=12, md=6),
+            ]),
+            dbc.Row([
+                dbc.Col([
+                    dbc.Label("Correo Electrónico", className="small fw-semibold"),
+                    dbc.Input(id="api-w-email", type="email", placeholder="alumno@unam.mx", className="mb-2"),
+                ], width=12, md=6),
+                dbc.Col([
+                    dbc.Label("Teléfono", className="small fw-semibold"),
+                    dbc.Input(id="api-w-phone", type="text", placeholder="55...", className="mb-2"),
+                ], width=12, md=6),
+            ]),
+            dbc.Row([
+                dbc.Col([
+                    dbc.Label("Edad", className="small fw-semibold"),
+                    dbc.Input(id="api-w-edad", type="number", min=10, className="mb-2"),
+                ], width=4),
+                dbc.Col([
+                    dbc.Label("Sexo", className="small fw-semibold"),
+                    dbc.Select(id="api-w-sexo", options=[
+                        {"label": "Femenino", "value": "Femenino"},
+                        {"label": "Masculino", "value": "Masculino"},
+                        {"label": "No binario / Otro", "value": "Otro"}
+                    ], placeholder="Selecciona...", className="mb-2"),
+                ], width=4),
+                dbc.Col([
+                    dbc.Label("Grado / Grupo / Turno", className="small fw-semibold"),
+                    dbc.Input(id="api-w-grado", type="text", placeholder="Ej. 5to sem / Matutino", className="mb-2"),
+                ], width=4),
+            ]),
+            dbc.Row([
+                dbc.Col([
+                    dbc.Label("Tipo de Intervención API *", className="small fw-semibold"),
+                    dbc.Select(id="api-w-tipo", options=[
+                        {"label": "Valoración", "value": "Valoración"},
+                        {"label": "Urgencia", "value": "Urgencia"},
+                        {"label": "Emergencia", "value": "Emergencia"},
+                        {"label": "Crisis", "value": "Crisis"},
+                        {"label": "Seguimiento", "value": "Seguimiento"},
+                        {"label": "Solicitud de información del programa", "value": "Solicitud de información"},
+                    ], value="Urgencia", className="mb-2"),
+                ], width=12, md=6),
+                dbc.Col([
+                    dbc.Label("¿Quién lo refiere a API?", className="small fw-semibold"),
+                    dbc.Input(id="api-w-refiere", type="text", placeholder="Ej. Tutoría, Docente, Acudió por cuenta propia...", className="mb-2"),
+                ], width=12, md=6),
+            ]),
+            dbc.Label("Motivo Principal de Contención *", className="small fw-semibold"),
+            dbc.Textarea(id="api-w-motivo", rows=2, placeholder="Describe el motivo principal de la contención...", className="mb-2"),
+            dbc.Label("Observaciones / Resultado de la Intervención", className="small fw-semibold"),
+            dbc.Textarea(id="api-w-obs", rows=2, placeholder="Detalles de la intervención, contacto a padres o canalización...", className="mb-3"),
+            dbc.Checkbox(
+                id="api-w-derivar-directo",
+                label="🚀 Pasar directamente a la Lista de Espera de ESPORA (marcado como '🚨 Derivado de API')",
+                value=False,
+                className="fw-semibold text-warning"
+            )
+        ]),
+        dbc.ModalFooter([
+            dbc.Button("Cancelar", id="btn-cancel-api-walkin", color="secondary", outline=True),
+            dbc.Button("Registrar Atención API", id="btn-submit-api-walkin", color="warning", className="fw-semibold")
+        ])
+    ], id="modal-api-walkin", is_open=False, size="lg"),
 
 
     # Appointment Modal
@@ -526,9 +606,10 @@ def handle_quick_status_change(quick_change_val, token, reload_trigger):
     Output("single-case-dropdown", "options"),
     Output("apt-case-id", "options"),
     Input("therapist-url", "pathname"),
-    State("auth-token", "data")
+    Input("api-walkin-reload-trigger", "data"),
+    Input("auth-token", "data")
 )
-def load_cases_and_dropdown(pathname, token):
+def load_cases_and_dropdown(pathname, walkin_trigger, token):
     if not token:
         return [], [], [], [], []
         
@@ -554,6 +635,86 @@ def load_cases_and_dropdown(pathname, token):
     except Exception as e:
         print("Error cases:", e)
     return [], [], [], [], []
+
+
+@callback(
+    Output("modal-api-walkin", "is_open"),
+    Output("api-walkin-alert", "children"),
+    Output("api-walkin-alert", "color"),
+    Output("api-walkin-alert", "is_open"),
+    Output("api-walkin-reload-trigger", "data"),
+    Input("btn-open-api-walkin", "n_clicks"),
+    Input("btn-cancel-api-walkin", "n_clicks"),
+    Input("btn-submit-api-walkin", "n_clicks"),
+    State("modal-api-walkin", "is_open"),
+    State("api-w-name", "value"),
+    State("api-w-account", "value"),
+    State("api-w-email", "value"),
+    State("api-w-phone", "value"),
+    State("api-w-edad", "value"),
+    State("api-w-sexo", "value"),
+    State("api-w-grado", "value"),
+    State("api-w-tipo", "value"),
+    State("api-w-refiere", "value"),
+    State("api-w-motivo", "value"),
+    State("api-w-obs", "value"),
+    State("api-w-derivar-directo", "value"),
+    State("api-walkin-reload-trigger", "data"),
+    State("auth-token", "data"),
+    prevent_initial_call=True
+)
+def handle_api_walkin_modal(n_open, n_cancel, n_submit, is_open,
+                            name, account, email, phone, edad, sexo, grado,
+                            tipo, refiere, motivo, obs, derivar_directo,
+                            reload_trigger, token):
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        return is_open, no_update, no_update, False, no_update
+    trigger_id = ctx.triggered[0]["prop_id"].split(".")[0]
+
+    if trigger_id == "btn-open-api-walkin":
+        return True, no_update, no_update, False, no_update
+    if trigger_id == "btn-cancel-api-walkin":
+        return False, no_update, no_update, False, no_update
+
+    if trigger_id == "btn-submit-api-walkin":
+        if not name or not account or not motivo:
+            return True, "Por favor completa Nombre, No. de Cuenta y Motivo Principal de Contención.", "warning", True, no_update
+        headers = {"Authorization": f"Bearer {token}"}
+        payload = {
+            "full_name": name.strip(),
+            "student_account": account.strip(),
+            "email": email.strip() if email else None,
+            "phone": phone.strip() if phone else None,
+            "edad": int(edad) if edad else None,
+            "sexo": sexo,
+            "grado_grupo_turno": grado,
+            "quien_refiere": refiere,
+            "tipo_intervencion": tipo or "Urgencia",
+            "motivo_contencion": motivo.strip(),
+            "observaciones": obs,
+            "derivar_a_lista_espera": bool(derivar_directo),
+        }
+        try:
+            res = requests.post(f"{API_URL}/cases/api-walkin", json=payload, headers=headers)
+            if res.status_code == 200:
+                c_data = res.json()
+                cid = c_data.get("id")
+                if derivar_directo:
+                    msg = f"✅ Alumno '{name}' registrado en Atención API (Caso #{cid}) y enviado directamente a la Lista de Espera de la sede con etiqueta '🚨 Derivado de API'."
+                else:
+                    msg = html.Span([
+                        f"✅ Alumno '{name}' registrado en Atención API (Caso #{cid}). Puedes abrir su perfil en ",
+                        html.A(f"Ver/Editar Expediente #{cid}", href=f"/patient/{cid}", className="fw-bold text-dark text-decoration-underline"),
+                        " y cuando requiera servicio normal hacer clic en '🚨 Derivar de API a Lista de Espera'."
+                    ])
+                return False, msg, "success", True, (reload_trigger or 0) + 1
+            detail = res.json().get("detail", res.text)
+            return True, f"Error al registrar: {detail}", "danger", True, no_update
+        except Exception as e:
+            return True, f"Error de conexión: {str(e)}", "danger", True, no_update
+
+    return is_open, no_update, no_update, False, no_update
 
 @callback(
     Output("modal-protocol", "is_open"),

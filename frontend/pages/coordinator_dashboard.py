@@ -15,6 +15,7 @@ API_URL = os.getenv("API_URL", "http://localhost:8000")
 
 WAITLIST_COLUMNS = [
     {"name": "ID Caso", "id": "ID Caso", "type": "numeric"},
+    {"name": "Origen", "id": "Origen"},
     {"name": "Riesgo", "id": "Riesgo"},
     {"name": "No. Alarmas", "id": "No. Alarmas", "type": "numeric"},
     {"name": "Grado de Urgencia", "id": "Grado de Urgencia"},
@@ -79,6 +80,15 @@ layout = dbc.Container([
                                 'if': {'column_id': 'Palabras de Riesgo'},
                                 'whiteSpace': 'normal',
                                 'color': 'red',
+                                'fontWeight': 'bold'
+                            },
+                            {
+                                'if': {
+                                    'filter_query': '{Origen} contains "API"',
+                                    'column_id': 'Origen'
+                                },
+                                'backgroundColor': '#fff3cd',
+                                'color': '#b45309',
                                 'fontWeight': 'bold'
                             }
                         ],
@@ -593,27 +603,60 @@ def load_waitlist(pathname, active_tab, modal_open, sync_trigger, token):
 
             if 'process_data.tuvo_intervencion_api' not in df.columns:
                 df['process_data.tuvo_intervencion_api'] = False
+
+            def resolve_origen(row):
+                is_api = (
+                    bool(row.get('process_data.tuvo_intervencion_api') == True)
+                    or str(row.get('intake_source', '')).lower() == 'api'
+                    or bool(row.get('participant.metadata_json.derivado_de_api') == True)
+                )
+                if is_api:
+                    ses_api = row.get('process_data.sesiones_api')
+                    if pd.notna(ses_api) and int(float(ses_api)) > 0:
+                        return f"🚨 Derivado de API ({int(float(ses_api))} ses.)"
+                    return "🚨 Derivado de API"
+                src = str(row.get('intake_source', '')).lower()
+                if 'limesurvey' in src:
+                    return "📋 LimeSurvey"
+                return "✍️ Manual"
+
+            df['Origen'] = df.apply(resolve_origen, axis=1)
+
+            # Enriquecer el Resumen con los datos del perfil clínico (Impresión diagnóstica, Sesiones API, Espora Comunitaria) si existen
+            def enrich_summary_with_profile(row):
+                base = str(row.get('Resumen (LimeSurvey)', 'Sin resumen'))
+                extras = []
+                imp_dx = row.get('process_data.impresion_diagnostica')
+                if pd.notna(imp_dx) and str(imp_dx).strip() and str(imp_dx).strip() not in base:
+                    extras.append(f"**Impresión Dx:** {str(imp_dx).strip()}")
+                esp_com = row.get('process_data.intervencion_espora_comunitaria_cual')
+                if pd.notna(esp_com) and str(esp_com).strip() and str(esp_com).strip() not in base:
+                    extras.append(f"**Espora Comunitaria:** {str(esp_com).strip()}")
+                if extras:
+                    return f"{base} | " + " | ".join(extras)
+                return base
+
+            df['Resumen (LimeSurvey)'] = df.apply(enrich_summary_with_profile, axis=1)
                 
-            # Filter for waiting ONLY for the waitlist table
+            # Mostrar TODOS los casos en espera (tanto LimeSurvey/Manual como Derivados de API) en la tabla principal
             base_waitlist_df = df[df['status'] == 'waiting'].copy()
             if base_waitlist_df.empty:
                 return WAITLIST_COLUMNS, [], [], []
                 
-            # Split into regular waitlist and API waitlist
-            api_waitlist_df = base_waitlist_df[base_waitlist_df['process_data.tuvo_intervencion_api'] == True].copy()
-            waitlist_df = base_waitlist_df[base_waitlist_df['process_data.tuvo_intervencion_api'] != True].copy()
+            waitlist_df = base_waitlist_df.copy()
+            api_waitlist_df = pd.DataFrame()
             
             def format_df(df_to_format):
                 if df_to_format.empty:
                     return WAITLIST_COLUMNS, []
                 df_to_format['created_at'] = df_to_format['created_at'].apply(lambda x: x[:10] if isinstance(x, str) else "")
                 df_to_format = df_to_format[[
-                    'id', 'Riesgo', 'No. Alarmas', 'Grado de Urgencia',
+                    'id', 'Origen', 'Riesgo', 'No. Alarmas', 'Grado de Urgencia',
                     'participant.full_name', 'Horario Disponible', 'created_at',
                     'Resumen (LimeSurvey)', 'Palabras de Riesgo', 'therapist_id'
                 ]]
                 df_to_format.columns = [
-                    'ID Caso', 'Riesgo', 'No. Alarmas', 'Grado de Urgencia',
+                    'ID Caso', 'Origen', 'Riesgo', 'No. Alarmas', 'Grado de Urgencia',
                     'Nombre', 'Horario Disponible', 'Fecha Ingreso',
                     'Resumen (LimeSurvey)', 'Palabras de Riesgo', 'ID Terapeuta'
                 ]

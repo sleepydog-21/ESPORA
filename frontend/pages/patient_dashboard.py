@@ -22,12 +22,13 @@ def layout(case_id=None, **kwargs):
             dbc.Col(html.H2(id="patient-title", className="my-4 fw-bold text-primary"), width=6),
             dbc.Col([
                 dbc.Button("Volver al Panel", href="/therapist", color="secondary", className="mt-4 float-end glass-btn ms-2"),
-                dbc.Button("🚀 Derivar a Plan de Consultas", id="btn-refer-api", color="warning", className="mt-4 float-end glass-btn ms-2"),
+                dbc.Button("🚨 Derivar de API a Lista de Espera", id="btn-refer-api", color="warning", className="mt-4 float-end glass-btn ms-2 fw-semibold"),
                 dbc.Button("✉️ Enviar Correo", id="btn-open-email-modal", color="primary", className="mt-4 float-end glass-btn ms-2"),
                 dbc.Button("📥 Descargar Historial", id="btn-download-history", color="info", className="mt-4 float-end glass-btn"),
                 dcc.Download(id="download-history-file")
             ], width=6)
         ]),
+        dbc.Alert(id="refer-api-alert", is_open=False, duration=8000, className="mb-3 fw-semibold"),
         
         dbc.Row([
             # Left Column: Profile and Submission Forms
@@ -561,6 +562,29 @@ def layout(case_id=None, **kwargs):
     ], fluid=True, className="py-4")
 
 # Callbacks
+
+@callback(
+    Output("refer-api-alert", "children"),
+    Output("refer-api-alert", "color"),
+    Output("refer-api-alert", "is_open"),
+    Input("btn-refer-api", "n_clicks"),
+    State("current-case-id", "data"),
+    State("auth-token", "data"),
+    prevent_initial_call=True
+)
+def handle_refer_from_api(n_clicks, case_id, token):
+    if not n_clicks or not case_id or not token:
+        return no_update, no_update, False
+    headers = {"Authorization": f"Bearer {token}"}
+    try:
+        res = requests.post(f"{API_URL}/cases/{case_id}/refer_from_api", headers=headers)
+        if res.status_code == 200:
+            return "✅ Alumno migrado exitosamente a la Lista de Espera de la sede con etiqueta '🚨 Derivado de API' y toda la información clínica de su perfil.", "success", True
+        detail = res.json().get("detail", res.text)
+        return f"Error al derivar a Lista de Espera: {detail}", "danger", True
+    except Exception as e:
+        return f"Error de conexión: {str(e)}", "danger", True
+
 
 @callback(
     Output("patient-title", "children"),

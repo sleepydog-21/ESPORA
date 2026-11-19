@@ -20,10 +20,117 @@ def get_cases(
     
     if current_user.role == models.RoleEnum.COORDINATOR:
         query = query.filter(models.Case.site_id == current_user.site_id)
-    elif current_user.role == models.RoleEnum.THERAPIST:
+    elif current_user.role in [models.RoleEnum.THERAPIST, models.RoleEnum.API_THERAPIST]:
         query = query.filter(models.Case.therapist_id == current_user.id)
         
     return query.offset(skip).limit(limit).all()
+
+@router.post("/api-walkin", response_model=schemas.CaseResponse)
+def create_api_walkin_case(
+    walkin: schemas.ApiWalkinCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_active_user)
+):
+    """
+    Permite al personal de API (o terapeuta/coordinador en consultorio) registrar a un alumno
+    que llega de emergencia/contención, guardando todos los datos de Atención API en su perfil
+    y dejándolo activo en su consultorio o enviándolo directo a la Lista de Espera de la sede.
+    """
+    site_id = current_user.site_id
+    if not site_id:
+        first_site = db.query(models.Site).first()
+        site_id = first_site.id if first_site else 1
+    site_obj = db.query(models.Site).filter(models.Site.id == site_id).first()
+
+    clean_acc = walkin.student_account.strip()
+    clean_email = (walkin.email or "").strip() or f"{clean_acc}@alumno.unam.mx"
+
+    summary_parts = [
+        f"**[ATENCIÓN API - {walkin.tipo_intervencion.upper()}]**",
+        f"**Motivo contención:** {walkin.motivo_contencion.strip()}",
+    ]
+    if walkin.quien_refiere:
+        summary_parts.append(f"**Refiere:** {walkin.quien_refiere.strip()}")
+    if walkin.grado_grupo_turno:
+        summary_parts.append(f"**Grado/Grupo/Turno:** {walkin.grado_grupo_turno.strip()}")
+    if walkin.observaciones:
+        summary_parts.append(f"**Observaciones API:** {walkin.observaciones.strip()}")
+    api_summary = " | ".join(summary_parts)
+
+    urgency_map = {
+        "Crisis": "Muy mal",
+        "Emergencia": "Muy mal",
+        "Urgencia": "Mal",
+        "Valoración": "Regular",
+        "Seguimiento": "Regular",
+        "Solicitud de información": "Bien",
+    }
+    sentimiento_equiv = urgency_map.get(walkin.tipo_intervencion, "Mal")
+
+    metadata_payload = {
+        "resumen_caso": api_summary,
+        "sentimiento": sentimiento_equiv,
+        "motivo": walkin.motivo_contencion.strip(),
+        "tipo_intervencion_api": walkin.tipo_intervencion,
+        "quien_refiere_api": walkin.quien_refiere or "",
+        "grado_grupo_turno": walkin.grado_grupo_turno or "",
+        "observaciones_api": walkin.observaciones or "",
+        "horarios_disponibles": "Derivado de Atención API",
+    }
+
+    participant = db.query(models.Participant).filter(models.Participant.student_account == clean_acc).first()
+    if not participant:
+        participant = models.Participant(
+            full_name=walkin.full_name.strip(),
+            student_account=clean_acc,
+            email=clean_email,
+            phone=walkin.phone,
+            gender=walkin.sexo,
+            emergency_contact_name=walkin.emergency_contact_name,
+            emergency_contact_phone=walkin.emergency_contact_phone,
+            faculty=site_obj.name if site_obj else "Sede ESPORA",
+            site_id=site_id,
+            metadata_json=metadata_payload,
+            limesurvey_summary=api_summary
+        )
+        db.add(participant)
+        db.commit()
+        db.refresh(participant)
+        participant.anonymous_folio = f"{site_id:02d}{participant.id:05d}"
+        db.commit()
+        db.refresh(participant)
+    else:
+        participant.metadata_json = metadata_payload
+        participant.limesurvey_summary = api_summary
+        db.commit()
+
+    target_status = models.CaseStatusEnum.WAITING if walkin.derivar_a_lista_espera else models.CaseStatusEnum.ACTIVE
+    target_therapist = None if walkin.derivar_a_lista_espera else current_user.id
+
+    db_case = models.Case(
+        participant_id=participant.id,
+        site_id=site_id,
+        therapist_id=target_therapist,
+        status=target_status,
+        intake_source="api"
+    )
+    db.add(db_case)
+    db.commit()
+    db.refresh(db_case)
+
+    proc = models.CaseProcessData(
+        case_id=db_case.id,
+        edad=walkin.edad,
+        sexo=walkin.sexo,
+        tuvo_intervencion_api=True,
+        sesiones_api=1,
+        horas_clinicas_actual=1,
+        estatus_proceso="En tratamiento"
+    )
+    db.add(proc)
+    db.commit()
+    db.refresh(db_case)
+    return db_case
 
 @router.post("/manual", response_model=schemas.CaseResponse)
 def create_manual_case(
@@ -381,26 +488,50 @@ def send_case_email(
 def refer_from_api(
     case_id: int,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.require_role([models.RoleEnum.API_THERAPIST, models.RoleEnum.ADMIN, models.RoleEnum.COORDINATOR]))
+    current_user: models.User = Depends(auth.get_current_active_user)
 ):
     case = db.query(models.Case).filter(models.Case.id == case_id).first()
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
         
-    if current_user.role == models.RoleEnum.API_THERAPIST and case.therapist_id != current_user.id:
+    if current_user.role in [models.RoleEnum.API_THERAPIST, models.RoleEnum.THERAPIST] and case.therapist_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized to refer this case")
         
-    # Unassign therapist and return to waitlist
+    # Unassign therapist and return to main waitlist marked as API referral
     case.status = models.CaseStatusEnum.WAITING
     case.therapist_id = None
+    case.intake_source = "api"
     
     # Mark in process data
     process_data = db.query(models.CaseProcessData).filter(models.CaseProcessData.case_id == case_id).first()
     if not process_data:
-        process_data = models.CaseProcessData(case_id=case_id, tuvo_intervencion_api=True)
+        process_data = models.CaseProcessData(case_id=case_id, tuvo_intervencion_api=True, sesiones_api=1)
         db.add(process_data)
     else:
         process_data.tuvo_intervencion_api = True
+        if not process_data.sesiones_api:
+            process_data.sesiones_api = 1
+
+    # Comunicar la información del perfil del alumno al resumen de la Lista de Espera
+    if case.participant:
+        p = case.participant
+        extra_notes = []
+        if process_data.impresion_diagnostica:
+            extra_notes.append(f"**Impresión Dx API:** {process_data.impresion_diagnostica}")
+        if process_data.sesiones_api:
+            extra_notes.append(f"**Sesiones API:** {process_data.sesiones_api}")
+        if process_data.intervencion_espora_comunitaria_cual:
+            extra_notes.append(f"**Espora Comunitaria:** {process_data.intervencion_espora_comunitaria_cual}")
+        base_summary = p.limesurvey_summary or ""
+        if extra_notes:
+            extra_str = " | ".join(extra_notes)
+            if extra_str not in base_summary:
+                base_summary = f"{base_summary} | {extra_str}".strip(" |")
+        p.limesurvey_summary = base_summary
+        meta = dict(p.metadata_json or {})
+        meta["resumen_caso"] = base_summary
+        meta["derivado_de_api"] = True
+        p.metadata_json = meta
         
     db.commit()
     db.refresh(case)

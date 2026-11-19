@@ -48,6 +48,22 @@ class ResetPasswordRequest(BaseModel):
     code: str
     new_password: str
 
+class ApiWalkinCreate(BaseModel):
+    full_name: str
+    student_account: str
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    emergency_contact_name: Optional[str] = None
+    emergency_contact_phone: Optional[str] = None
+    edad: Optional[int] = None
+    sexo: Optional[str] = None
+    grado_grupo_turno: Optional[str] = None
+    quien_refiere: Optional[str] = None
+    tipo_intervencion: str = "Urgencia"
+    motivo_contencion: str
+    observaciones: Optional[str] = None
+    derivar_a_lista_espera: bool = False
+
 class UserUpdate(BaseModel):
     full_name: Optional[str] = None
     phone: Optional[str] = None
