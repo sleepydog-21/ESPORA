@@ -13,30 +13,35 @@ Su objetivo núcleo no es solo digitalizar el papel, sino transformar los datos 
 
 ## 2. Arquitectura de Módulos Implementados
 
-### 2.1. Nivel Base: Módulo del Terapeuta
-Panel táctico para gestionar la historia clínica interactiva del paciente.
+### 2.1. Nivel Base: Módulo del Terapeuta y Protocolo API
+Panel táctico para gestionar la historia clínica interactiva del paciente y registrar contenciones de emergencia.
 - **Calendario Clínico Dinámico:** Una interfaz que traza a 14 y 30 días las recaídas o sesiones activas.
-- **Notas de Evolución Interconectadas:** Generador de reportes mediante clics rápidos dentro del calendario. 
-- **Expediente Cronológico (Timeline):** Todo movimiento de un alumno se centraliza en su perfil vertical interactivo. Integra botones prioritarios para alertas rojas de riesgos severos.
-- **Expediente Editable en Vivo:** Ficha clínica de control de proceso (`CaseProcessData`) en la pantalla del paciente que permite modificar variables (edad, inasistencias, canalización, diagnósticos) con autoguardado en base de datos.
+- **Notas de Evolución Interconectadas:** Generador de reportes mediante clics rápidos dentro del calendario, incluyendo checklist de 25 problemáticas trabajadas y evaluación de ideación/intentos suicidas.
+- **Botón `🚨 Protocolo API` (Contención):** Disponible para cualquier terapeuta o personal de API en el consultorio (`/therapist`) para registrar contenciones o emergencias (alumno nuevo o paciente existente), guardando la ficha en el historial clínico y permitiendo derivar en un clic a la Lista de Espera de la sede con la etiqueta `🚨 Derivado de API`.
+- **Expediente Cronológico (Timeline):** Todo movimiento de un alumno se centraliza en su perfil vertical interactivo (`/patient/<id>`).
+- **Expediente Editable en Vivo:** Ficha clínica de control de proceso (`CaseProcessData`) en la pantalla del paciente que permite modificar variables (edad, inasistencias, canalización, diagnósticos, sesiones API) con guardado en base de datos.
+- **Envío de Cuestionarios de Seguimiento y Egreso por Correo Oficial (`espora@c3.unam.mx`):** Desde el perfil del paciente, el terapeuta envía enlaces personalizados de LimeSurvey prellenados con el Folio del alumno (*Información Complementaria de Inicio `#228334`* y *Formato de Egreso + Escala CRES-4 `#338334`*) y sincroniza las respuestas directo al expediente.
 - **Módulo de Anexo Rápido:** Capacidad para arrastrar, soltar o subir fotografías de notas escritas a mano, dictados o reportes en formato PDF/Imagen directamente en la línea de tiempo del paciente, almacenados en Base64 en PostgreSQL.
 - **Descarga Histórica Completa:** Generación instantánea en un solo clic de un libro de Excel consolidado multi-pestaña con el expediente completo (sesiones, datos de proceso, adjuntos, y logs de auditoría).
 
-### 2.2. Nivel Gerencial: Módulo de Coordinación Local
-Herramientas operativas diseñadas para líderes de Sede/Facultad.
-- **Monitor de Salud Ocupacional:** Mapeos de densidad clínica que evidencian cuántas horas o desgaste mantiene cada médico adscrito a la sede.
-- **Motor de Asignación Estratégica:** Algoritmo paramétrico capaz de leer disponibilidades cruzadas y arrojar recomendaciones puntuales sobre qué psicólogo debería absorber los casos entrantes en la Lista de Espera.
-- **Directorio Local de Profesionales:** Interfaz libre de fricción que permite incrustar nuevos doctores y terapeutas mediante un portal de alta directa ligada a PostgreSQL.
+### 2.2. Nivel Gerencial: Módulo de Coordinación Local (Por Entidad)
+Herramientas operativas diseñadas para líderes de las 32 Entidades (Facultades, Escuelas Nacionales, ENP 1–9, CCH, Institutos, Posgrado, Cultura y Morelos).
+- **Lista de Espera Inteligente y Ordenable Multi-Columna:** Tabla unificada por entidad con columnas ordenables de **`Origen`** (`🚨 Derivado de API`, `📋 LimeSurvey`, `✍️ Manual`), **`Riesgo`** (`3 🔴 Alto`, `2 🟡 Medio`, `1 🟢 Bajo`), **`No. Alarmas`** (diccionario clínico ampliado de palabras de cuidado), **`Grado de Urgencia`** (`5 🔴 Muy mal` a `1 🟢 Muy bien`), **`Horario Disponible`** y **`Fecha Ingreso`**.
+- **Motor de Asignación Estratégica (Horario + Carga):** Algoritmo que cruza los bloques de `Horario Disponible` solicitados por el alumno en LimeSurvey contra las sesiones agendadas y carga activa de cada terapeuta de la sede, recomendando y preseleccionando al terapeuta óptimo (`⭐ RECOMENDADO`).
+- **Alta Rápida con Llave Genérica y Recuperación de Contraseña:** Creación de cuentas de Terapeutas y Coordinadores ingresando únicamente su correo institucional (con envío automático de llave genérica por correo), botón `🔑 Cambiar Contraseña` en la barra superior y recuperación de contraseña mediante código de 6 dígitos por correo en `/login`.
 
 ### 2.3. Nivel Directivo: Módulo de Coordinación General (God-Mode)
 Panel de control de infraestructura central, invisible para eslabones inferiores.
 - **Lanzador de Sedes:** Herramienta interna para inicializar Facultades y configuraciones operativas dinámicas directamente sobre las bases de datos. Permite designar qué campos son obligatorios o no en ramas periféricas institucionales.
-- **Directorio Operativo Institucional:** Visor de administradores regionales en tiempo real. 
-- **Auditoría Forense Inmutable:** Sistema de *log* cifrado que recaba permanentemente cualquier alteración en todos los sistemas subyacentes. Todo bloque de información manipulado queda grabado con "Timestamp", "Quien" y "Cual campo".
-- **Visualización Analítica Nacional:** Mapas de calor (Heatmaps) consolidados para entender las tasas de deserción en contraste con éxito clínico de todos los estados universitarios centralizados.
+- **Directorio Operativo Institucional:** Visor y alta rápida de coordinadores de sede en tiempo real.
+- **Auditoría Forense Inmutable:** Sistema de *log* que recaba permanentemente cualquier alteración en todos los sistemas subyacentes con `"Timestamp"`, `"Quien"` y `"Cual campo"`.
+- **Visualización Analítica Nacional y Clima Laboral:** Mapas de calor (Heatmaps) consolidados y gráficas semanales de bienestar docente (prevención de *burnout*).
 
-### 2.4. Automatización y Recepción de Encuestas
-- **Endpoint Webhook (Recepción de LimeSurvey):** Enlace receptor activo que intercepta las respuestas de encuestas de ingreso o satisfacción provenientes de LimeSurvey. Asocia dinámicamente al estudiante, crea su caso en la lista de espera, mapea preguntas a campos flexibles de formularios, y los arroja crudos para auditoría y visualización del terapeuta.
+### 2.4. Automatización y Conector con LimeSurvey (Infraestructura C3)
+- **Conector Bidireccional (`lsapi.c3.unam.mx` / `ls-test.c3.unam.mx`):** Sincronización activa de las 3 encuestas institucionales en LimeSurvey:
+  1. **`SID 118334` (*Encuesta primer contacto*):** Incluye el catálogo de 32 Entidades de la UNAM y una Matriz de Selección Múltiple (Checkboxes) de Horarios (`Matutino / Mediodía / Vespertino` × `Lunes a Sábado`) condicionada a los horarios de atención de cada entidad.
+  2. **`SID 228334` (*Información Complementaria de Inicio*):** Datos académicos, antecedentes psicológicos/psiquiátricos, áreas afectadas y duración del malestar.
+  3. **`SID 338334` (*Formato de Egreso y Satisfacción CRES-4*):** Evaluación 1–10 del proceso con preguntas condicionales y escala oficial CRES-4.
 
 ### 2.5. Gestión de Datos y Respaldos Automatizados (Directorio `datos/`)
 El sistema centraliza sus archivos de datos y reportes fuera de la estructura de código en la carpeta local `./datos/`, montada en el contenedor del backend:
