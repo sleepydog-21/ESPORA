@@ -184,8 +184,12 @@ def forgot_password(
             if settings.mail_username and settings.mail_password:
                 server.login(settings.mail_username, settings.mail_password)
             server.send_message(msg)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"No se pudo enviar el correo de recuperación: {str(e)}")
+    except Exception as smtp_err:
+        try:
+            with smtplib.SMTP("mailpit", 1025, timeout=5) as local_srv:
+                local_srv.send_message(msg)
+        except Exception:
+            raise HTTPException(status_code=500, detail=f"No se pudo enviar el correo de recuperación: {str(smtp_err)}")
 
     return {
         "status": "success",

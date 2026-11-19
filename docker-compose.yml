@@ -27,8 +27,11 @@ services:
     environment:
       - DATABASE_URL=postgresql://espora_user:espora_password@db:5432/espora_db
       - SECRET_KEY=supersecretkey_change_in_production
-      - MAIL_SERVER=mailpit
-      - MAIL_PORT=1025
+      - MAIL_SERVER=smtp.gmail.com
+      - MAIL_PORT=587
+      - MAIL_SENDER=espora@c3.unam.mx
+      - MAIL_USERNAME=espora@c3.unam.mx
+      - MAIL_USE_TLS=true
     volumes:
       - ./backend:/app
       - './datos:/app/datos'
