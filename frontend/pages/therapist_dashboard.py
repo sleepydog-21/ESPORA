@@ -36,7 +36,7 @@ layout = dbc.Container([
 
     dbc.Row([
         dbc.Col([
-            dbc.Button("🚨 Registrar Alumno en Contención (API)", id="btn-open-api-walkin", color="warning", className="mb-4 float-start fw-semibold shadow-sm"),
+            dbc.Button("🚨 Protocolo API", id="btn-open-api-walkin", color="warning", className="mb-4 float-start fw-bold shadow-sm px-4"),
             dbc.Button("📅 Agendar Cita Única", id="btn-add-single", color="outline-primary", className="mb-4 float-end mx-2"),
             dbc.Button("🗓️ Iniciar Protocolo Bi-semanal", id="btn-open-protocol", color="primary", className="mb-4 float-end")
         ], width=12)
@@ -118,52 +118,68 @@ layout = dbc.Container([
         ])
     ], id="modal-protocol", is_open=False),
 
-    # Modal Registro de Alumno en Contención (API)
+    # Modal Protocolo API Completo (para cualquier terapeuta o personal de API)
     dbc.Modal([
-        dbc.ModalHeader(dbc.ModalTitle("🚨 Registro de Atención API (Contención / Urgencia)")),
+        dbc.ModalHeader(dbc.ModalTitle("🚨 Protocolo API — Registro de Atención y Contención")),
         dbc.ModalBody([
-            html.P("Registra a un alumno que acude al consultorio para contención o valoración API. Podrás editar su expediente completo y, cuando lo requiera, migrarlo a la Lista de Espera de psicoterapia ESPORA.", className="text-muted small mb-3"),
+            html.P("Cualquier terapeuta o personal de API puede llenar o actualizar este formulario de contención, ya sea para un alumno nuevo que llega de emergencia o para un paciente ya registrado.", className="text-muted small mb-3"),
+            dbc.Label("Opcional: Seleccionar Paciente ya registrado (o dejar en blanco para alumno nuevo):", className="small fw-semibold text-primary"),
+            dcc.Dropdown(id="api-w-existing-case", placeholder="Buscar entre mis pacientes o dejar vacío para registrar nuevo...", className="mb-3"),
+            html.Hr(className="my-2"),
             dbc.Row([
                 dbc.Col([
-                    dbc.Label("Nombre Completo del Alumno *", className="small fw-semibold"),
-                    dbc.Input(id="api-w-name", type="text", placeholder="Nombres y Apellidos", className="mb-2"),
-                ], width=12, md=6),
+                    dbc.Label("Nombre del Alumno *", className="small fw-semibold"),
+                    dbc.Input(id="api-w-name", type="text", placeholder="Nombre completo", className="mb-2"),
+                ], width=12, md=4),
                 dbc.Col([
                     dbc.Label("No. de Cuenta *", className="small fw-semibold"),
                     dbc.Input(id="api-w-account", type="text", placeholder="Ej. 318000000", className="mb-2"),
-                ], width=12, md=6),
-            ]),
-            dbc.Row([
+                ], width=12, md=4),
                 dbc.Col([
                     dbc.Label("Correo Electrónico", className="small fw-semibold"),
                     dbc.Input(id="api-w-email", type="email", placeholder="alumno@unam.mx", className="mb-2"),
-                ], width=12, md=6),
-                dbc.Col([
-                    dbc.Label("Teléfono", className="small fw-semibold"),
-                    dbc.Input(id="api-w-phone", type="text", placeholder="55...", className="mb-2"),
-                ], width=12, md=6),
+                ], width=12, md=4),
             ]),
             dbc.Row([
+                dbc.Col([
+                    dbc.Label("Semestre de Atención", className="small fw-semibold"),
+                    dbc.Input(id="api-w-semestre", type="text", value="2026-2", placeholder="2026-1 / 2026-2...", className="mb-2"),
+                ], width=6, md=3),
+                dbc.Col([
+                    dbc.Label("Fecha de Atención", className="small fw-semibold"),
+                    dbc.Input(id="api-w-fecha", type="date", value=datetime.now().strftime("%Y-%m-%d"), className="mb-2"),
+                ], width=6, md=3),
                 dbc.Col([
                     dbc.Label("Edad", className="small fw-semibold"),
                     dbc.Input(id="api-w-edad", type="number", min=10, className="mb-2"),
-                ], width=4),
-                dbc.Col([
-                    dbc.Label("Sexo", className="small fw-semibold"),
-                    dbc.Select(id="api-w-sexo", options=[
-                        {"label": "Femenino", "value": "Femenino"},
-                        {"label": "Masculino", "value": "Masculino"},
-                        {"label": "No binario / Otro", "value": "Otro"}
-                    ], placeholder="Selecciona...", className="mb-2"),
-                ], width=4),
+                ], width=4, md=2),
                 dbc.Col([
                     dbc.Label("Grado / Grupo / Turno", className="small fw-semibold"),
-                    dbc.Input(id="api-w-grado", type="text", placeholder="Ej. 5to sem / Matutino", className="mb-2"),
-                ], width=4),
+                    dbc.Input(id="api-w-grado", type="text", placeholder="Ej. 5to / Gpo 2 / Matutino", className="mb-2"),
+                ], width=8, md=4),
             ]),
             dbc.Row([
                 dbc.Col([
-                    dbc.Label("Tipo de Intervención API *", className="small fw-semibold"),
+                    dbc.Label("Sexo", className="small fw-semibold"),
+                    dbc.Select(id="api-w-sexo", options=[
+                        {"label": "Mujer", "value": "Femenino"},
+                        {"label": "Hombre", "value": "Masculino"},
+                        {"label": "No binario", "value": "No binario"},
+                        {"label": "Otro (especificar)", "value": "Otro"}
+                    ], placeholder="Selecciona...", className="mb-2"),
+                ], width=6, md=3),
+                dbc.Col([
+                    dbc.Label("Teléfono Alumno", className="small fw-semibold"),
+                    dbc.Input(id="api-w-phone", type="text", placeholder="55...", className="mb-2"),
+                ], width=6, md=3),
+                dbc.Col([
+                    dbc.Label("Contacto de Emergencia (Nombre y Teléfono)", className="small fw-semibold"),
+                    dbc.Input(id="api-w-emergencia", type="text", placeholder="Nombre / Parentesco / Teléfono", className="mb-2"),
+                ], width=12, md=6),
+            ]),
+            dbc.Row([
+                dbc.Col([
+                    dbc.Label("Tipo de Intervención *", className="small fw-semibold"),
                     dbc.Select(id="api-w-tipo", options=[
                         {"label": "Valoración", "value": "Valoración"},
                         {"label": "Urgencia", "value": "Urgencia"},
@@ -172,28 +188,52 @@ layout = dbc.Container([
                         {"label": "Seguimiento", "value": "Seguimiento"},
                         {"label": "Solicitud de información del programa", "value": "Solicitud de información"},
                     ], value="Urgencia", className="mb-2"),
-                ], width=12, md=6),
+                ], width=12, md=4),
                 dbc.Col([
                     dbc.Label("¿Quién lo refiere a API?", className="small fw-semibold"),
-                    dbc.Input(id="api-w-refiere", type="text", placeholder="Ej. Tutoría, Docente, Acudió por cuenta propia...", className="mb-2"),
-                ], width=12, md=6),
+                    dbc.Input(id="api-w-refiere", type="text", placeholder="Tutoría, Docente, Propia cuenta...", className="mb-2"),
+                ], width=8, md=5),
+                dbc.Col([
+                    dbc.Label("Horas Clínicas Invertidas", className="small fw-semibold"),
+                    dbc.Input(id="api-w-horas", type="number", min=0.5, step=0.5, value=1, className="mb-2"),
+                ], width=4, md=3),
             ]),
             dbc.Label("Motivo Principal de Contención *", className="small fw-semibold"),
             dbc.Textarea(id="api-w-motivo", rows=2, placeholder="Describe el motivo principal de la contención...", className="mb-2"),
-            dbc.Label("Observaciones / Resultado de la Intervención", className="small fw-semibold"),
-            dbc.Textarea(id="api-w-obs", rows=2, placeholder="Detalles de la intervención, contacto a padres o canalización...", className="mb-3"),
+            dbc.Row([
+                dbc.Col([
+                    dbc.Label("Se contacta a padres/tutores", className="small fw-semibold"),
+                    dbc.Input(id="api-w-padres", type="text", value="No", placeholder="Sí / No / Otro (especificar)", className="mb-2"),
+                ], width=12, md=4),
+                dbc.Col([
+                    dbc.Label("Canalización a otra institución/servicio (Sí/No — ¿Cuál?)", className="small fw-semibold"),
+                    dbc.Input(id="api-w-canalizacion", type="text", placeholder="Dejar vacío si No, o anotar institución...", className="mb-2"),
+                ], width=12, md=4),
+                dbc.Col([
+                    dbc.Label("¿Ya tiene terapeuta ESPORA asignado? (Sí/No — Nombre)", className="small fw-semibold"),
+                    dbc.Input(id="api-w-terapeuta-asig", type="text", placeholder="Dejar vacío si No, o anotar nombre...", className="mb-2"),
+                ], width=12, md=4),
+            ]),
+            dbc.Row([
+                dbc.Col([
+                    dbc.Label("Intervención de Espora Comunitaria (Sí/No — ¿En qué consistió?)", className="small fw-semibold"),
+                    dbc.Input(id="api-w-comunitaria", type="text", placeholder="Dejar vacío si No, o detallar en qué consistió...", className="mb-2"),
+                ], width=12),
+            ]),
+            dbc.Label("OBSERVACIONES (Especificaciones / resultado de intervención / si cambia el tipo de contención)", className="small fw-semibold"),
+            dbc.Textarea(id="api-w-obs", rows=2, placeholder="Observaciones clínicas detalladas...", className="mb-3"),
             dbc.Checkbox(
                 id="api-w-derivar-directo",
-                label="🚀 Pasar directamente a la Lista de Espera de ESPORA (marcado como '🚨 Derivado de API')",
+                label="🚀 Se refiere a psicoterapia en ESPORA (Pasar a la Lista de Espera de la sede con etiqueta '🚨 Derivado de API')",
                 value=False,
-                className="fw-semibold text-warning"
+                className="fw-bold text-warning"
             )
         ]),
         dbc.ModalFooter([
             dbc.Button("Cancelar", id="btn-cancel-api-walkin", color="secondary", outline=True),
-            dbc.Button("Registrar Atención API", id="btn-submit-api-walkin", color="warning", className="fw-semibold")
+            dbc.Button("Guardar Protocolo API", id="btn-submit-api-walkin", color="warning", className="fw-bold")
         ])
-    ], id="modal-api-walkin", is_open=False, size="lg"),
+    ], id="modal-api-walkin", is_open=False, size="xl"),
 
 
     # Appointment Modal
@@ -605,20 +645,21 @@ def handle_quick_status_change(quick_change_val, token, reload_trigger):
     Output("protocol-case-dropdown", "options"),
     Output("single-case-dropdown", "options"),
     Output("apt-case-id", "options"),
+    Output("api-w-existing-case", "options"),
     Input("therapist-url", "pathname"),
     Input("api-walkin-reload-trigger", "data"),
     Input("auth-token", "data")
 )
 def load_cases_and_dropdown(pathname, walkin_trigger, token):
     if not token:
-        return [], [], [], [], []
+        return [], [], [], [], [], []
         
     headers = {"Authorization": f"Bearer {token}"}
     try:
         response = requests.get(f"{API_URL}/cases", headers=headers)
         if response.status_code == 200:
             cases = response.json()
-            if not cases: return [], [], [], [], []
+            if not cases: return [], [], [], [], [], []
             df = pd.json_normalize(cases)
             
             # For table
@@ -629,12 +670,37 @@ def load_cases_and_dropdown(pathname, walkin_trigger, token):
             cols = [{"name": i, "id": i, "presentation": "markdown"} if i == "Acciones" else {"name": i, "id": i} for i in table_df.columns]
             
             # For Dropdown
-            opts = [{"label": f"[{c['id']}] {c['participant']['full_name']}", "value": c['id']} for c in cases if c['status'] in ['active', 'assigned']]
+            opts = [{"label": f"[{c['id']}] {c['participant']['full_name']} ({c['participant'].get('student_account', '')})", "value": c['id']} for c in cases if c['status'] in ['active', 'assigned']]
             
-            return cols, table_df.to_dict('records'), opts, opts, opts
+            return cols, table_df.to_dict('records'), opts, opts, opts, opts
     except Exception as e:
         print("Error cases:", e)
-    return [], [], [], [], []
+    return [], [], [], [], [], []
+
+
+@callback(
+    Output("api-w-name", "value"),
+    Output("api-w-account", "value"),
+    Output("api-w-email", "value"),
+    Output("api-w-phone", "value"),
+    Input("api-w-existing-case", "value"),
+    State("auth-token", "data"),
+    prevent_initial_call=True
+)
+def prefill_api_existing_student(selected_case_id, token):
+    if not selected_case_id or not token:
+        return "", "", "", ""
+    headers = {"Authorization": f"Bearer {token}"}
+    try:
+        res = requests.get(f"{API_URL}/cases", headers=headers)
+        if res.status_code == 200:
+            case_obj = next((c for c in res.json() if c["id"] == selected_case_id), None)
+            if case_obj and case_obj.get("participant"):
+                p = case_obj["participant"]
+                return p.get("full_name", ""), p.get("student_account", ""), p.get("email", ""), p.get("phone", "")
+    except Exception:
+        pass
+    return no_update, no_update, no_update, no_update
 
 
 @callback(
@@ -647,15 +713,24 @@ def load_cases_and_dropdown(pathname, walkin_trigger, token):
     Input("btn-cancel-api-walkin", "n_clicks"),
     Input("btn-submit-api-walkin", "n_clicks"),
     State("modal-api-walkin", "is_open"),
+    State("api-w-existing-case", "value"),
     State("api-w-name", "value"),
     State("api-w-account", "value"),
     State("api-w-email", "value"),
     State("api-w-phone", "value"),
+    State("api-w-emergencia", "value"),
+    State("api-w-semestre", "value"),
+    State("api-w-fecha", "value"),
     State("api-w-edad", "value"),
     State("api-w-sexo", "value"),
     State("api-w-grado", "value"),
     State("api-w-tipo", "value"),
     State("api-w-refiere", "value"),
+    State("api-w-horas", "value"),
+    State("api-w-padres", "value"),
+    State("api-w-canalizacion", "value"),
+    State("api-w-terapeuta-asig", "value"),
+    State("api-w-comunitaria", "value"),
     State("api-w-motivo", "value"),
     State("api-w-obs", "value"),
     State("api-w-derivar-directo", "value"),
@@ -664,8 +739,10 @@ def load_cases_and_dropdown(pathname, walkin_trigger, token):
     prevent_initial_call=True
 )
 def handle_api_walkin_modal(n_open, n_cancel, n_submit, is_open,
-                            name, account, email, phone, edad, sexo, grado,
-                            tipo, refiere, motivo, obs, derivar_directo,
+                            existing_case_id, name, account, email, phone, emergencia,
+                            semestre, fecha, edad, sexo, grado,
+                            tipo, refiere, horas, padres, canalizacion, terapeuta_asig, comunitaria,
+                            motivo, obs, derivar_directo,
                             reload_trigger, token):
     ctx = dash.callback_context
     if not ctx.triggered:
@@ -681,18 +758,38 @@ def handle_api_walkin_modal(n_open, n_cancel, n_submit, is_open,
         if not name or not account or not motivo:
             return True, "Por favor completa Nombre, No. de Cuenta y Motivo Principal de Contención.", "warning", True, no_update
         headers = {"Authorization": f"Bearer {token}"}
+        canal_clean = (canalizacion or "").strip()
+        has_canal = bool(canal_clean and canal_clean.lower() not in ["no", "ninguna", "n/a"])
+        terap_clean = (terapeuta_asig or "").strip()
+        has_terap = bool(terap_clean and terap_clean.lower() not in ["no", "ninguno", "n/a"])
+        comun_clean = (comunitaria or "").strip()
+        has_comun = bool(comun_clean and comun_clean.lower() not in ["no", "ninguna", "n/a"])
+
         payload = {
+            "existing_case_id": int(existing_case_id) if existing_case_id else None,
             "full_name": name.strip(),
             "student_account": account.strip(),
             "email": email.strip() if email else None,
             "phone": phone.strip() if phone else None,
+            "emergency_contact_name": emergencia.strip() if emergencia else None,
+            "semestre_atencion": semestre or "2026-2",
+            "fecha_atencion": fecha,
             "edad": int(edad) if edad else None,
             "sexo": sexo,
             "grado_grupo_turno": grado,
             "quien_refiere": refiere,
             "tipo_intervencion": tipo or "Urgencia",
+            "horas_clinicas": float(horas) if horas else 1.0,
+            "contacto_padres": padres or "No",
+            "canalizacion_externa": has_canal,
+            "canalizacion_externa_cual": canal_clean if has_canal else None,
+            "tiene_terapeuta_asignado": has_terap,
+            "nombre_terapeuta_asignado": terap_clean if has_terap else None,
+            "intervencion_comunitaria": has_comun,
+            "intervencion_comunitaria_cual": comun_clean if has_comun else None,
             "motivo_contencion": motivo.strip(),
             "observaciones": obs,
+            "refiere_psicoterapia_espora": bool(derivar_directo),
             "derivar_a_lista_espera": bool(derivar_directo),
         }
         try:
@@ -701,16 +798,16 @@ def handle_api_walkin_modal(n_open, n_cancel, n_submit, is_open,
                 c_data = res.json()
                 cid = c_data.get("id")
                 if derivar_directo:
-                    msg = f"✅ Alumno '{name}' registrado en Atención API (Caso #{cid}) y enviado directamente a la Lista de Espera de la sede con etiqueta '🚨 Derivado de API'."
+                    msg = f"✅ Protocolo API guardado para '{name}' (Caso #{cid}) y enviado a la Lista de Espera de la sede con etiqueta '🚨 Derivado de API'."
                 else:
                     msg = html.Span([
-                        f"✅ Alumno '{name}' registrado en Atención API (Caso #{cid}). Puedes abrir su perfil en ",
+                        f"✅ Protocolo API guardado para '{name}' (Caso #{cid}). Puedes abrir su perfil en ",
                         html.A(f"Ver/Editar Expediente #{cid}", href=f"/patient/{cid}", className="fw-bold text-dark text-decoration-underline"),
                         " y cuando requiera servicio normal hacer clic en '🚨 Derivar de API a Lista de Espera'."
                     ])
                 return False, msg, "success", True, (reload_trigger or 0) + 1
             detail = res.json().get("detail", res.text)
-            return True, f"Error al registrar: {detail}", "danger", True, no_update
+            return True, f"Error al guardar Protocolo API: {detail}", "danger", True, no_update
         except Exception as e:
             return True, f"Error de conexión: {str(e)}", "danger", True, no_update
 

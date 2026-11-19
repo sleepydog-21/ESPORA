@@ -49,20 +49,37 @@ class ResetPasswordRequest(BaseModel):
     new_password: str
 
 class ApiWalkinCreate(BaseModel):
+    existing_case_id: Optional[int] = None
     full_name: str
     student_account: str
     email: Optional[str] = None
     phone: Optional[str] = None
     emergency_contact_name: Optional[str] = None
     emergency_contact_phone: Optional[str] = None
+    semestre_atencion: Optional[str] = "2026-2"
+    fecha_atencion: Optional[str] = None
     edad: Optional[int] = None
-    sexo: Optional[str] = None
+    grado: Optional[str] = None
+    grupo: Optional[str] = None
+    turno: Optional[str] = None
     grado_grupo_turno: Optional[str] = None
+    sexo: Optional[str] = None
+    sexo_otro: Optional[str] = None
     quien_refiere: Optional[str] = None
-    tipo_intervencion: str = "Urgencia"
     motivo_contencion: str
-    observaciones: Optional[str] = None
+    tipo_intervencion: str = "Urgencia"
+    horas_clinicas: Optional[float] = 1.0
+    contacto_padres: Optional[str] = "No"
+    contacto_padres_otro: Optional[str] = None
+    canalizacion_externa: bool = False
+    canalizacion_externa_cual: Optional[str] = None
+    refiere_psicoterapia_espora: bool = False
     derivar_a_lista_espera: bool = False
+    observaciones: Optional[str] = None
+    tiene_terapeuta_asignado: bool = False
+    nombre_terapeuta_asignado: Optional[str] = None
+    intervencion_comunitaria: bool = False
+    intervencion_comunitaria_cual: Optional[str] = None
 
 class UserUpdate(BaseModel):
     full_name: Optional[str] = None

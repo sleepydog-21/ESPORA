@@ -32,9 +32,10 @@ def create_api_walkin_case(
     current_user: models.User = Depends(auth.get_current_active_user)
 ):
     """
-    Permite al personal de API (o terapeuta/coordinador en consultorio) registrar a un alumno
-    que llega de emergencia/contención, guardando todos los datos de Atención API en su perfil
-    y dejándolo activo en su consultorio o enviándolo directo a la Lista de Espera de la sede.
+    Permite a cualquier terapeuta, personal de API o coordinador llenar el formulario completo
+    del 'Protocolo API (Contención)' tanto para un alumno nuevo como para un paciente existente,
+    guardando la ficha en el Historial de Evaluaciones Clínicas, actualizando CaseProcessData
+    y derivándolo a la Lista de Espera si se marca 'Se refiere a psicoterapia en ESPORA = Sí'.
     """
     site_id = current_user.site_id
     if not site_id:
@@ -44,15 +45,20 @@ def create_api_walkin_case(
 
     clean_acc = walkin.student_account.strip()
     clean_email = (walkin.email or "").strip() or f"{clean_acc}@alumno.unam.mx"
+    sexo_final = walkin.sexo_otro.strip() if (walkin.sexo == "Otro" and walkin.sexo_otro) else (walkin.sexo or "No especificado")
+    padres_final = walkin.contacto_padres_otro.strip() if (walkin.contacto_padres == "Otro" and walkin.contacto_padres_otro) else (walkin.contacto_padres or "No")
+    ggt = walkin.grado_grupo_turno or " / ".join(x for x in [walkin.grado, walkin.grupo, walkin.turno] if x)
 
     summary_parts = [
-        f"**[ATENCIÓN API - {walkin.tipo_intervencion.upper()}]**",
+        f"**[PROTOCOLO API - {walkin.tipo_intervencion.upper()}]**",
         f"**Motivo contención:** {walkin.motivo_contencion.strip()}",
     ]
     if walkin.quien_refiere:
         summary_parts.append(f"**Refiere:** {walkin.quien_refiere.strip()}")
-    if walkin.grado_grupo_turno:
-        summary_parts.append(f"**Grado/Grupo/Turno:** {walkin.grado_grupo_turno.strip()}")
+    if ggt:
+        summary_parts.append(f"**Grado/Grupo/Turno:** {ggt}")
+    if walkin.canalizacion_externa and walkin.canalizacion_externa_cual:
+        summary_parts.append(f"**Canalización:** {walkin.canalizacion_externa_cual.strip()}")
     if walkin.observaciones:
         summary_parts.append(f"**Observaciones API:** {walkin.observaciones.strip()}")
     api_summary = " | ".join(summary_parts)
@@ -67,25 +73,37 @@ def create_api_walkin_case(
     }
     sentimiento_equiv = urgency_map.get(walkin.tipo_intervencion, "Mal")
 
+    participant = None
+    db_case = None
+    if walkin.existing_case_id:
+        db_case = db.query(models.Case).filter(models.Case.id == walkin.existing_case_id).first()
+        if db_case:
+            participant = db_case.participant
+
+    if not participant:
+        participant = db.query(models.Participant).filter(models.Participant.student_account == clean_acc).first()
+
+    existing_meta = dict(participant.metadata_json or {}) if participant else {}
     metadata_payload = {
+        **existing_meta,
         "resumen_caso": api_summary,
-        "sentimiento": sentimiento_equiv,
+        "sentimiento": existing_meta.get("sentimiento") or sentimiento_equiv,
         "motivo": walkin.motivo_contencion.strip(),
         "tipo_intervencion_api": walkin.tipo_intervencion,
         "quien_refiere_api": walkin.quien_refiere or "",
-        "grado_grupo_turno": walkin.grado_grupo_turno or "",
+        "grado_grupo_turno": ggt,
         "observaciones_api": walkin.observaciones or "",
-        "horarios_disponibles": "Derivado de Atención API",
+        "horarios_disponibles": existing_meta.get("horarios_disponibles") or "Derivado de Protocolo API",
+        "derivado_de_api": True,
     }
 
-    participant = db.query(models.Participant).filter(models.Participant.student_account == clean_acc).first()
     if not participant:
         participant = models.Participant(
             full_name=walkin.full_name.strip(),
             student_account=clean_acc,
             email=clean_email,
             phone=walkin.phone,
-            gender=walkin.sexo,
+            gender=sexo_final,
             emergency_contact_name=walkin.emergency_contact_name,
             emergency_contact_phone=walkin.emergency_contact_phone,
             faculty=site_obj.name if site_obj else "Sede ESPORA",
@@ -100,34 +118,140 @@ def create_api_walkin_case(
         db.commit()
         db.refresh(participant)
     else:
+        participant.full_name = walkin.full_name.strip() or participant.full_name
+        if walkin.phone:
+            participant.phone = walkin.phone
+        if walkin.emergency_contact_name:
+            participant.emergency_contact_name = walkin.emergency_contact_name
+        if walkin.emergency_contact_phone:
+            participant.emergency_contact_phone = walkin.emergency_contact_phone
         participant.metadata_json = metadata_payload
         participant.limesurvey_summary = api_summary
         db.commit()
 
-    target_status = models.CaseStatusEnum.WAITING if walkin.derivar_a_lista_espera else models.CaseStatusEnum.ACTIVE
-    target_therapist = None if walkin.derivar_a_lista_espera else current_user.id
+    pasar_a_espera = bool(walkin.derivar_a_lista_espera or (walkin.refiere_psicoterapia_espora and not walkin.tiene_terapeuta_asignado))
 
-    db_case = models.Case(
+    if not db_case:
+        db_case = db.query(models.Case).filter(
+            models.Case.participant_id == participant.id,
+            models.Case.status.in_([models.CaseStatusEnum.WAITING, models.CaseStatusEnum.ASSIGNED, models.CaseStatusEnum.ACTIVE])
+        ).order_by(models.Case.id.desc()).first()
+
+    if not db_case:
+        db_case = models.Case(
+            participant_id=participant.id,
+            site_id=site_id,
+            therapist_id=None if pasar_a_espera else current_user.id,
+            status=models.CaseStatusEnum.WAITING if pasar_a_espera else models.CaseStatusEnum.ACTIVE,
+            intake_source="api"
+        )
+        db.add(db_case)
+        db.commit()
+        db.refresh(db_case)
+    else:
+        db_case.intake_source = "api"
+        if pasar_a_espera:
+            db_case.status = models.CaseStatusEnum.WAITING
+            db_case.therapist_id = None
+        db.commit()
+        db.refresh(db_case)
+
+    proc = db.query(models.CaseProcessData).filter(models.CaseProcessData.case_id == db_case.id).first()
+    hrs_int = int(round(walkin.horas_clinicas or 1))
+    if not proc:
+        proc = models.CaseProcessData(
+            case_id=db_case.id,
+            semestre_inicio=walkin.semestre_atencion,
+            edad=walkin.edad,
+            sexo=sexo_final,
+            tuvo_intervencion_api=True,
+            sesiones_api=1,
+            horas_clinicas_actual=hrs_int,
+            canalizacion_otra=walkin.canalizacion_externa,
+            canalizacion_otra_cual=walkin.canalizacion_externa_cual,
+            intervencion_espora_comunitaria=walkin.intervencion_comunitaria,
+            intervencion_espora_comunitaria_cual=walkin.intervencion_comunitaria_cual,
+            estatus_proceso="En tratamiento"
+        )
+        db.add(proc)
+    else:
+        proc.tuvo_intervencion_api = True
+        proc.sesiones_api = (proc.sesiones_api or 0) + 1
+        proc.horas_clinicas_actual = (proc.horas_clinicas_actual or 0) + hrs_int
+        if walkin.edad:
+            proc.edad = walkin.edad
+        if walkin.sexo:
+            proc.sexo = sexo_final
+        if walkin.semestre_atencion and not proc.semestre_inicio:
+            proc.semestre_inicio = walkin.semestre_atencion
+        if walkin.canalizacion_externa:
+            proc.canalizacion_otra = True
+            proc.canalizacion_otra_cual = walkin.canalizacion_externa_cual
+        if walkin.intervencion_comunitaria:
+            proc.intervencion_espora_comunitaria = True
+            proc.intervencion_espora_comunitaria_cual = walkin.intervencion_comunitaria_cual
+
+    # Guardar también como FormSubmission en el Historial de Evaluaciones Clínicas del expediente
+    template_name = "Protocolo de Atención API (Contención)"
+    template = db.query(models.FormTemplate).filter(models.FormTemplate.name == template_name).first()
+    if not template:
+        template = models.FormTemplate(
+            name=template_name,
+            description="Registro clínico de contención / atención API"
+        )
+        db.add(template)
+        db.commit()
+        db.refresh(template)
+
+    submission = models.FormSubmission(
+        form_template_id=template.id,
         participant_id=participant.id,
-        site_id=site_id,
-        therapist_id=target_therapist,
-        status=target_status,
-        intake_source="api"
-    )
-    db.add(db_case)
-    db.commit()
-    db.refresh(db_case)
-
-    proc = models.CaseProcessData(
         case_id=db_case.id,
-        edad=walkin.edad,
-        sexo=walkin.sexo,
-        tuvo_intervencion_api=True,
-        sesiones_api=1,
-        horas_clinicas_actual=1,
-        estatus_proceso="En tratamiento"
+        submitted_by_id=current_user.id
     )
-    db.add(proc)
+    db.add(submission)
+    db.flush()
+
+    api_fields = [
+        ("semestre_atencion", "Semestre de atención", walkin.semestre_atencion),
+        ("fecha_atencion", "Fecha de atención", walkin.fecha_atencion),
+        ("edad", "Edad", walkin.edad),
+        ("grado_grupo_turno", "Grado / Grupo / Turno", ggt),
+        ("sexo", "Sexo", sexo_final),
+        ("contacto_emergencia", "Contacto de emergencia", f"{walkin.emergency_contact_name or ''} ({walkin.emergency_contact_phone or ''})".strip(" ()")),
+        ("quien_refiere", "Quién lo refiere a API", walkin.quien_refiere),
+        ("motivo_contencion", "Motivo principal de contención", walkin.motivo_contencion),
+        ("tipo_intervencion", "Tipo de intervención", walkin.tipo_intervencion),
+        ("horas_clinicas", "Horas clínicas invertidas", walkin.horas_clinicas),
+        ("contacto_padres", "Se contacta a padres/tutores", padres_final),
+        ("canalizacion_externa", "Canalización a otra institución o servicio", walkin.canalizacion_externa_cual if walkin.canalizacion_externa else "No"),
+        ("refiere_psicoterapia_espora", "Se refiere a psicoterapia en ESPORA", "Sí" if walkin.refiere_psicoterapia_espora else "No"),
+        ("observaciones", "Observaciones", walkin.observaciones),
+        ("terapeuta_asignado", "¿Ya tiene asignado a un terapeuta Espora?", walkin.nombre_terapeuta_asignado if walkin.tiene_terapeuta_asignado else "No"),
+        ("intervencion_comunitaria", "Intervención de Espora Comunitaria", walkin.intervencion_comunitaria_cual if walkin.intervencion_comunitaria else "No"),
+    ]
+    for f_key, f_label, f_val in api_fields:
+        if f_val is None or str(f_val).strip() == "":
+            continue
+        field = db.query(models.FormField).filter(
+            models.FormField.form_template_id == template.id,
+            models.FormField.name == f_key
+        ).first()
+        if not field:
+            field = models.FormField(
+                form_template_id=template.id,
+                name=f_key,
+                label=f_label,
+                field_type=models.FieldTypeEnum.STRING
+            )
+            db.add(field)
+            db.flush()
+        db.add(models.FormFieldValue(
+            form_submission_id=submission.id,
+            form_field_id=field.id,
+            value_text=str(f_val)
+        ))
+
     db.commit()
     db.refresh(db_case)
     return db_case
