@@ -5,7 +5,8 @@ import os
 
 app = dash.Dash(
     __name__, 
-    use_pages=True, 
+    use_pages=True,
+    title="ESPORA Psicológica — Plataforma Clínica",
     external_stylesheets=[dbc.themes.LUMEN, dbc.icons.BOOTSTRAP],
     external_scripts=[
         "https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js"
@@ -23,24 +24,29 @@ app.layout = html.Div([
     dbc.Navbar(
         dbc.Container([
             dbc.NavbarBrand(
-                html.Span([
-                    "🌿 ESPORA",
-                    html.Span("Salud Mental", className="navbar-brand-badge ms-2")
+                html.Div([
+                    html.Img(
+                        src="/assets/espora_logo.png",
+                        alt="ESPORA Psicológica",
+                        style={"height": "38px", "width": "auto", "objectFit": "contain"}
+                    ),
+                    html.Span("Plataforma Clínica", className="navbar-brand-badge ms-2 d-none d-sm-inline-block")
                 ], className="navbar-brand-espora"),
                 href="/",
-                className="d-flex align-items-center"
+                className="d-flex align-items-center py-0"
             ),
             dbc.Nav([
                 dbc.NavItem(dbc.NavLink([html.I(className="bi bi-box-arrow-in-right me-1"), "Ingresar"], href="/login", id="nav-login", className="nav-link-espora")),
                 dbc.NavItem(dbc.NavLink([html.I(className="bi bi-pie-chart-fill me-1"), "General"], href="/general", id="nav-general", className="nav-link-espora", style={"display": "none"})),
                 dbc.NavItem(dbc.NavLink([html.I(className="bi bi-person-lines-fill me-1"), "Coordinación"], href="/coordinator", id="nav-coordinator", className="nav-link-espora", style={"display": "none"})),
                 dbc.NavItem(dbc.NavLink([html.I(className="bi bi-heart-pulse-fill me-1"), "Consultorio"], href="/therapist", id="nav-therapist", className="nav-link-espora", style={"display": "none"})),
-                dbc.NavItem(dbc.Button([html.I(className="bi bi-key-fill me-1"), "Cambiar Contraseña"], id="nav-change-pwd", color="outline-light", size="sm", className="ms-2", style={"display": "none"})),
-                dbc.NavItem(dbc.NavLink([html.I(className="bi bi-box-arrow-right me-1"), "Salir"], href="/login", id="nav-logout", className="nav-link-espora text-danger", style={"display": "none"})),
+                dbc.NavItem(dbc.Button([html.I(className="bi bi-key-fill me-1"), "Cambiar Contraseña"], id="nav-change-pwd", color="outline-secondary", size="sm", className="ms-2 nav-pwd-btn", style={"display": "none"})),
+                dbc.NavItem(dbc.NavLink([html.I(className="bi bi-box-arrow-right me-1"), "Salir"], href="/login", id="nav-logout", className="nav-link-espora nav-link-logout", style={"display": "none"})),
             ], className="ms-auto d-flex align-items-center gap-1", navbar=True)
         ], fluid=True, className="px-4"),
         className="navbar-espora shadow-sm",
-        dark=True
+        dark=False,
+        color="white"
     ),
     
     dbc.Modal([

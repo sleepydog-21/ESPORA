@@ -12,12 +12,16 @@ layout = dbc.Container([
     dbc.Row([
         dbc.Col([
             dbc.Card([
+                html.Div(className="espora-brand-stripe"),
                 dbc.CardBody([
                     html.Div([
-                        html.Div("🌿", style={"fontSize": "2.8rem", "lineHeight": "1", "marginBottom": "0.75rem"}),
-                        html.H3("Bienvenido a ESPORA", className="fw-bold mb-1", style={"letterSpacing": "-0.02em"}),
-                        html.P("Plataforma de Salud Mental Universitaria", className="text-muted small mb-4"),
-                    ], className="text-center pt-3"),
+                        html.Img(
+                            src="/assets/espora_logo.png",
+                            alt="ESPORA Psicológica",
+                            style={"height": "66px", "width": "auto", "marginBottom": "0.9rem", "objectFit": "contain"}
+                        ),
+                        html.P("Plataforma de Salud Mental Universitaria · UNAM", className="text-muted small mb-4 fw-medium"),
+                    ], className="text-center pt-2"),
                     
                     dbc.Alert(
                         [html.I(className="bi bi-exclamation-triangle-fill me-2"), "Credenciales incorrectas o cuenta inactiva"],

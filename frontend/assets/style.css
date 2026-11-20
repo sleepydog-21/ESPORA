@@ -9,21 +9,25 @@
   /* Core typography */
   --font-family: 'Inter', -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
   
-  /* Color Palette */
-  --bg-app: #f8fafc;
-  --bg-card: rgba(255, 255, 255, 0.90);
+  /* Official ESPORA Psicológica Color Palette */
+  --bg-app: #f4f9fa;
+  --bg-card: rgba(255, 255, 255, 0.96);
   --bg-card-solid: #ffffff;
-  --bg-header-frosted: rgba(15, 23, 42, 0.92);
+  --bg-header-frosted: rgba(255, 255, 255, 0.94);
   
   /* Text */
   --text-main: #0f172a;
-  --text-muted: #64748b;
+  --text-muted: #526478;
   --text-subtle: #94a3b8;
   
-  /* Brand / Clinical Accents */
-  --color-primary: #0284c7;
-  --color-primary-hover: #0369a1;
-  --color-teal: #0f766e;
+  /* Brand / Clinical Accents (from official espora.jpg) */
+  --color-primary: #00A5B8;
+  --color-primary-hover: #008B9B;
+  --color-primary-soft: rgba(0, 181, 200, 0.12);
+  --color-accent-orange: #F39221;
+  --color-accent-orange-hover: #DC7E14;
+  --color-accent-orange-soft: rgba(243, 146, 33, 0.14);
+  --color-teal: #007E8F;
   
   /* Clinical Status Tints */
   --risk-high-bg: #fef2f2;
@@ -38,22 +42,34 @@
   --risk-low-text: #15803d;
   --risk-low-border: #bbf7d0;
 
-  --status-wait-bg: #eff6ff;
-  --status-wait-text: #1d4ed8;
+  --status-wait-bg: #ecfeff;
+  --status-wait-text: #0e7490;
 
   /* Borders & Shadows */
-  --border-subtle: #e2e8f0;
-  --border-card: rgba(0, 0, 0, 0.07);
-  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
-  --shadow-card: 0 4px 16px -2px rgba(15, 23, 42, 0.05), 0 2px 6px -1px rgba(15, 23, 42, 0.02);
-  --shadow-card-hover: 0 10px 25px -4px rgba(15, 23, 42, 0.08), 0 4px 10px -2px rgba(15, 23, 42, 0.03);
-  --shadow-focus: 0 0 0 3px rgba(2, 132, 199, 0.20);
+  --border-subtle: #e2ecef;
+  --border-card: rgba(0, 142, 158, 0.10);
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-card: 0 6px 20px -4px rgba(0, 115, 130, 0.07), 0 2px 6px -1px rgba(15, 23, 42, 0.03);
+  --shadow-card-hover: 0 12px 28px -4px rgba(0, 115, 130, 0.11), 0 4px 10px -2px rgba(15, 23, 42, 0.04);
+  --shadow-focus: 0 0 0 3px rgba(0, 181, 200, 0.22);
   
   /* Motion & Easing */
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
   --duration-fast: 160ms;
   --duration-normal: 220ms;
+}
+
+/* Official ESPORA top accent bar */
+.espora-brand-stripe {
+  height: 4px;
+  width: 100%;
+  background: linear-gradient(90deg, #00B5C8 0%, #00B5C8 62%, #F39221 100%);
+  border-radius: 14px 14px 0 0;
+}
+
+.text-primary {
+  color: var(--color-primary) !important;
 }
 
 /* Base Body Styles */
@@ -85,17 +101,40 @@ body {
   transform: scale(0.97) !important;
 }
 
-/* Primary Button Enhancements */
+/* Primary & Brand Accent Button Enhancements */
 .btn-primary {
-  background-color: var(--color-primary);
-  border-color: var(--color-primary);
-  box-shadow: 0 1px 2px rgba(2, 132, 199, 0.2);
+  background-color: var(--color-primary) !important;
+  border-color: var(--color-primary) !important;
+  box-shadow: 0 1px 2px rgba(0, 165, 184, 0.25);
 }
 
 .btn-primary:hover {
-  background-color: var(--color-primary-hover);
-  border-color: var(--color-primary-hover);
-  box-shadow: 0 4px 12px rgba(2, 132, 199, 0.25);
+  background-color: var(--color-primary-hover) !important;
+  border-color: var(--color-primary-hover) !important;
+  box-shadow: 0 4px 12px rgba(0, 165, 184, 0.30);
+}
+
+.btn-outline-primary {
+  color: var(--color-primary) !important;
+  border-color: var(--color-primary) !important;
+}
+
+.btn-outline-primary:hover {
+  background-color: var(--color-primary) !important;
+  color: #ffffff !important;
+}
+
+.btn-warning {
+  background-color: var(--color-accent-orange) !important;
+  border-color: var(--color-accent-orange) !important;
+  color: #ffffff !important;
+  box-shadow: 0 1px 2px rgba(243, 146, 33, 0.28);
+}
+
+.btn-warning:hover {
+  background-color: var(--color-accent-orange-hover) !important;
+  border-color: var(--color-accent-orange-hover) !important;
+  color: #ffffff !important;
 }
 
 /* ==========================================================================
@@ -131,24 +170,20 @@ body {
 }
 
 /* ==========================================================================
-   Navigation Bar (Apple Style Frosted Glass)
+   Navigation Bar (Light Frosted Glass harmonized with ESPORA Logo)
    ========================================================================== */
 .navbar-espora {
   background: var(--bg-header-frosted) !important;
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  padding: 0.65rem 1.5rem;
+  border-bottom: 2px solid rgba(0, 181, 200, 0.22);
+  padding: 0.55rem 1.5rem;
   position: sticky;
   top: 0;
   z-index: 1020;
 }
 
 .navbar-brand-espora {
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  font-size: 1.2rem;
-  color: #ffffff !important;
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -157,26 +192,46 @@ body {
 .navbar-brand-badge {
   font-size: 0.68rem;
   font-weight: 600;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
-  background: rgba(255, 255, 255, 0.15);
-  color: #38bdf8;
-  padding: 0.15rem 0.5rem;
+  background: var(--color-accent-orange-soft);
+  color: #C26B09;
+  padding: 0.2rem 0.55rem;
   border-radius: 9999px;
-  border: 1px solid rgba(56, 189, 248, 0.3);
+  border: 1px solid rgba(243, 146, 33, 0.35);
 }
 
 .nav-link-espora {
-  color: #cbd5e1 !important;
+  color: #334155 !important;
   font-weight: 500;
-  padding: 0.4rem 0.8rem !important;
-  border-radius: 6px;
+  padding: 0.42rem 0.85rem !important;
+  border-radius: 8px;
   transition: all var(--duration-fast) var(--ease-out);
 }
 
 .nav-link-espora:hover {
-  color: #ffffff !important;
-  background: rgba(255, 255, 255, 0.08);
+  color: var(--color-primary-hover) !important;
+  background: var(--color-primary-soft);
+}
+
+.nav-link-logout {
+  color: #dc2626 !important;
+}
+
+.nav-link-logout:hover {
+  color: #b91c1c !important;
+  background: #fef2f2 !important;
+}
+
+.nav-pwd-btn {
+  border-color: #cbd5e1 !important;
+  color: #334155 !important;
+}
+
+.nav-pwd-btn:hover {
+  background-color: var(--color-primary-soft) !important;
+  border-color: var(--color-primary) !important;
+  color: var(--color-primary-hover) !important;
 }
 
 /* ==========================================================================
