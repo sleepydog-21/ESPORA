@@ -14,18 +14,15 @@ dash.register_page(__name__, path='/coordinator', name='Coordinator Dashboard')
 API_URL = os.getenv("API_URL", "http://localhost:8000")
 
 WAITLIST_COLUMNS = [
-    {"name": "ID Caso", "id": "ID Caso", "type": "numeric"},
+    {"name": "Nombre", "id": "Nombre"},
     {"name": "Origen", "id": "Origen"},
     {"name": "Riesgo", "id": "Riesgo"},
-    {"name": "No. Alarmas", "id": "No. Alarmas", "type": "numeric"},
+    {"name": "Alarmas", "id": "No. Alarmas", "type": "numeric"},
     {"name": "Grado de Urgencia", "id": "Grado de Urgencia"},
-    {"name": "Nombre", "id": "Nombre"},
     {"name": "Horario Disponible", "id": "Horario Disponible"},
     {"name": "Fecha Ingreso", "id": "Fecha Ingreso"},
     {"name": "Resumen (LimeSurvey)", "id": "Resumen (LimeSurvey)", "presentation": "markdown"},
     {"name": "Palabras de Riesgo", "id": "Palabras de Riesgo"},
-    {"name": "ID Terapeuta", "id": "ID Terapeuta"},
-    {"name": "Acciones", "id": "Acciones", "presentation": "markdown"},
 ]
 
 layout = dbc.Container([
@@ -65,6 +62,19 @@ layout = dbc.Container([
                         style_header={'backgroundColor': '#f8f9fa', 'fontWeight': 'bold'},
                         style_data_conditional=[
                             {
+                                'if': {'column_id': 'Nombre'},
+                                'fontWeight': '600',
+                                'minWidth': '170px'
+                            },
+                            {
+                                'if': {'column_id': 'No. Alarmas'},
+                                'width': '72px',
+                                'minWidth': '68px',
+                                'maxWidth': '82px',
+                                'textAlign': 'center',
+                                'fontWeight': 'bold'
+                            },
+                            {
                                 'if': {'column_id': 'Resumen (LimeSurvey)'},
                                 'whiteSpace': 'normal',
                                 'height': 'auto',
@@ -74,7 +84,7 @@ layout = dbc.Container([
                                 'if': {'column_id': 'Horario Disponible'},
                                 'whiteSpace': 'normal',
                                 'height': 'auto',
-                                'minWidth': '180px'
+                                'minWidth': '170px'
                             },
                             {
                                 'if': {'column_id': 'Palabras de Riesgo'},
@@ -651,20 +661,13 @@ def load_waitlist(pathname, active_tab, modal_open, sync_trigger, token):
                     return WAITLIST_COLUMNS, []
                 df_to_format['created_at'] = df_to_format['created_at'].apply(lambda x: x[:10] if isinstance(x, str) else "")
                 df_to_format = df_to_format[[
-                    'id', 'Origen', 'Riesgo', 'No. Alarmas', 'Grado de Urgencia',
-                    'participant.full_name', 'Horario Disponible', 'created_at',
-                    'Resumen (LimeSurvey)', 'Palabras de Riesgo', 'therapist_id'
+                    'id', 'participant.full_name', 'Origen', 'Riesgo', 'No. Alarmas', 'Grado de Urgencia',
+                    'Horario Disponible', 'created_at', 'Resumen (LimeSurvey)', 'Palabras de Riesgo'
                 ]]
                 df_to_format.columns = [
-                    'ID Caso', 'Origen', 'Riesgo', 'No. Alarmas', 'Grado de Urgencia',
-                    'Nombre', 'Horario Disponible', 'Fecha Ingreso',
-                    'Resumen (LimeSurvey)', 'Palabras de Riesgo', 'ID Terapeuta'
+                    'ID Caso', 'Nombre', 'Origen', 'Riesgo', 'No. Alarmas', 'Grado de Urgencia',
+                    'Horario Disponible', 'Fecha Ingreso', 'Resumen (LimeSurvey)', 'Palabras de Riesgo'
                 ]
-                
-                df_to_format['ID Terapeuta'] = df_to_format['ID Terapeuta'].fillna("Sin asignar")
-                
-                # Acciones link to Patient Dashboard
-                df_to_format['Acciones'] = df_to_format['ID Caso'].apply(lambda x: f"[Ver/Editar](/patient/{x})")
                 
                 return WAITLIST_COLUMNS, df_to_format.to_dict('records')
 
