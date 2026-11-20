@@ -19,14 +19,14 @@ def layout(case_id=None, **kwargs):
         dcc.Store(id="current-case-id", data=case_id),
         
         dbc.Row([
-            dbc.Col(html.H2(id="patient-title", className="my-4 fw-bold text-primary"), width=6),
+            dbc.Col(html.H2(id="patient-title", className="my-4 fw-bold text-primary"), width=5),
             dbc.Col([
-                dbc.Button("Volver al Panel", href="/therapist", color="secondary", className="mt-4 float-end glass-btn ms-2"),
-                dbc.Button("🚨 Derivar de API a Lista de Espera", id="btn-refer-api", color="warning", className="mt-4 float-end glass-btn ms-2 fw-semibold"),
-                dbc.Button("✉️ Enviar Correo", id="btn-open-email-modal", color="primary", className="mt-4 float-end glass-btn ms-2"),
-                dbc.Button("📥 Descargar Historial", id="btn-download-history", color="info", className="mt-4 float-end glass-btn"),
+                dbc.Button([html.I(className="bi bi-arrow-left me-1"), "Volver"], href="/therapist", color="secondary", className="mt-4 float-end glass-btn ms-2"),
+                dbc.Button([html.I(className="bi bi-exclamation-triangle-fill me-1"), "Derivar de API"], id="btn-refer-api", color="warning", className="mt-4 float-end glass-btn ms-2 fw-semibold"),
+                dbc.Button([html.I(className="bi bi-envelope me-1"), "Enviar Correo"], id="btn-open-email-modal", color="primary", className="mt-4 float-end glass-btn ms-2"),
+                dbc.Button([html.I(className="bi bi-download me-1"), "Historial"], id="btn-download-history", color="info", className="mt-4 float-end glass-btn"),
                 dcc.Download(id="download-history-file")
-            ], width=6)
+            ], width=7)
         ]),
         dbc.Alert(id="refer-api-alert", is_open=False, duration=8000, className="mb-3 fw-semibold"),
         
@@ -42,15 +42,15 @@ def layout(case_id=None, **kwargs):
                 
                 # Notas Clínicas y Notas de Voz (Grabadora + Adjuntos)
                 dbc.Card([
-                    dbc.CardHeader(html.H5("📝 Notas Clínicas y 🎙️ Notas de Voz")),
+                    dbc.CardHeader(html.H5([html.I(className="bi bi-journal-text me-2 text-primary"), "Notas Clínicas y Notas de Voz"], className="mb-0")),
                     dbc.CardBody([
                         dbc.Label("Nota Clínica Escrita:", className="small fw-semibold text-secondary mb-1"),
                         dbc.Textarea(id="quick-submission-free-notes", placeholder="Escribe aquí notas clínicas de sesión, observaciones, acuerdos o transcripción...", rows=4, className="mb-3"),
 
                         dbc.Label("Grabar Nota de Voz (Micrófono):", className="small fw-semibold text-secondary mb-1"),
                         dbc.Row([
-                            dbc.Col(dbc.Button("🎙️ Grabar Nota de Voz", id="btn-voice-start", color="danger", outline=True, size="sm", className="w-100 fw-semibold"), width=7),
-                            dbc.Col(dbc.Button("⏹️ Detener", id="btn-voice-stop", color="secondary", size="sm", disabled=True, className="w-100 fw-semibold"), width=5),
+                            dbc.Col(dbc.Button([html.I(className="bi bi-mic-fill me-1"), "Grabar Nota de Voz"], id="btn-voice-start", color="danger", outline=True, size="sm", className="w-100 fw-semibold"), width=7),
+                            dbc.Col(dbc.Button([html.I(className="bi bi-stop-fill me-1"), "Detener"], id="btn-voice-stop", color="secondary", size="sm", disabled=True, className="w-100 fw-semibold"), width=5),
                         ], className="mb-1"),
                         html.Div(id="voice-status-text", className="small text-muted mb-1"),
                         html.Div(id="voice-preview-container", className="mb-2"),
@@ -77,21 +77,21 @@ def layout(case_id=None, **kwargs):
                         ),
                         html.Div(id="quick-submission-upload-preview", className="mb-2 text-muted small"),
                         dcc.Store(id="quick-submission-upload-store", data=None),
-                        dbc.Button("💾 Guardar Nota Clínica / Nota de Voz en Expediente", id="btn-submit-quick-submission", color="success", className="w-100 fw-semibold"),
+                        dbc.Button([html.I(className="bi bi-floppy me-2"), "Guardar Nota Clínica / Nota de Voz en Expediente"], id="btn-submit-quick-submission", color="success", className="w-100 fw-semibold"),
                         dbc.Alert(id="quick-submission-alert", is_open=False, color="success", className="mt-3")
                     ])
                 ], className="mb-4 shadow-sm border-0 glass-card"),
                 
                 dbc.Card([
-                    dbc.CardHeader(html.H5("Historial de Evaluaciones Clínicas")),
+                    dbc.CardHeader(html.H5([html.I(className="bi bi-clipboard2-pulse me-2 text-primary"), "Historial de Evaluaciones Clínicas"], className="mb-0")),
                     dbc.CardBody([
                         dbc.Row([
-                            dbc.Col(dbc.Button("➕ Nueva Captura Clínica", id="btn-new-submission", color="primary", className="w-100 mb-2"), width=12, md=6),
-                            dbc.Col(dbc.Button("🔄 Sincronizar LimeSurvey", id="btn-sync-patient-ls", color="outline-primary", className="w-100 mb-2"), width=12, md=6),
+                            dbc.Col(dbc.Button([html.I(className="bi bi-plus-lg me-1"), "Nueva Captura Clínica"], id="btn-new-submission", color="primary", className="w-100 mb-2"), width=12, md=6),
+                            dbc.Col(dbc.Button([html.I(className="bi bi-arrow-repeat me-1"), "Sincronizar LimeSurvey"], id="btn-sync-patient-ls", color="outline-primary", className="w-100 mb-2"), width=12, md=6),
                         ]),
                         dbc.Row([
-                            dbc.Col(dbc.Button("📨 Enviar Cuestionario de Inicio", id="btn-quick-send-inicio", color="info", outline=True, size="sm", className="w-100 mb-2 fw-semibold"), width=12, md=6),
-                            dbc.Col(dbc.Button("🏁 Enviar Cuestionario de Egreso (CRES-4)", id="btn-quick-send-egreso", color="success", outline=True, size="sm", className="w-100 mb-2 fw-semibold"), width=12, md=6),
+                            dbc.Col(dbc.Button([html.I(className="bi bi-send me-1"), "Enviar Cuestionario de Inicio"], id="btn-quick-send-inicio", color="info", outline=True, size="sm", className="w-100 mb-2 fw-semibold"), width=12, md=6),
+                            dbc.Col(dbc.Button([html.I(className="bi bi-clipboard-check me-1"), "Enviar Cuestionario de Egreso (CRES-4)"], id="btn-quick-send-egreso", color="success", outline=True, size="sm", className="w-100 mb-2 fw-semibold"), width=12, md=6),
                         ], className="mb-2"),
                         dbc.Alert(id="patient-ls-sync-alert", is_open=False, duration=6000, className="small py-2 mb-3"),
                         dcc.Store(id="patient-ls-sync-trigger", data=0),
@@ -306,7 +306,7 @@ def layout(case_id=None, **kwargs):
                             ], width=12, md=4),
                         ]),
                         
-                        dbc.Button("💾 Guardar Control de Proceso", id="btn-save-process-data", color="success", className="mt-3 float-end"),
+                        dbc.Button([html.I(className="bi bi-floppy me-2"), "Guardar Control de Proceso"], id="btn-save-process-data", color="success", className="mt-3 float-end"),
                         dbc.Alert(id="process-data-alert", is_open=False, color="success", className="mt-3 w-50")
                     ])
                 ], className="mb-4 shadow-sm border-0 glass-card")

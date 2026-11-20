@@ -15,12 +15,12 @@ layout = dbc.Container([
     dcc.Interval(id='global-metrics-interval', interval=60000, n_intervals=0), # Refresh 1 min
     
     dbc.Row([
-        dbc.Col(html.H2("Coordinación General", className="my-4 text-primary"), width=7),
+        dbc.Col(html.H2([html.I(className="bi bi-globe2 me-2"), "Coordinación General"], className="my-4 text-primary fw-bold"), width=6),
         dbc.Col([
-            dbc.Button("Descargar Excel Maestro (.xlsx)", id="btn-download-excel-maestro", color="info", className="my-4 float-end"),
-            dbc.Button("Descargar CSV Básico", id="btn-download-csv", color="secondary", outline=True, className="my-4 float-end mx-2"),
-            dbc.Button("Crear Nueva Sede", id="btn-open-create-site", color="primary", className="my-4 float-end mx-2 fw-bold")
-        ], width=5)
+            dbc.Button([html.I(className="bi bi-file-earmark-excel me-1"), "Excel Maestro (.xlsx)"], id="btn-download-excel-maestro", color="info", className="my-4 float-end"),
+            dbc.Button([html.I(className="bi bi-filetype-csv me-1"), "CSV Básico"], id="btn-download-csv", color="secondary", outline=True, className="my-4 float-end mx-2"),
+            dbc.Button([html.I(className="bi bi-building-add me-1"), "Crear Nueva Sede"], id="btn-open-create-site", color="primary", className="my-4 float-end mx-2 fw-bold")
+        ], width=6)
     ]),
     dcc.Download(id="download-data-csv"),
     
@@ -81,12 +81,12 @@ layout = dbc.Container([
         ], width=12, lg=5)
     ]),
 
-    # Fila de Reporte de Clima Laboral y Bienestar Docente (Feedback)
+    # Fila de Reporte de Clima de Terapeutas (Feedback)
     dbc.Row([
         dbc.Col([
             dbc.Card([
                 dbc.CardHeader(dbc.Row([
-                    dbc.Col(html.H5("Feedback y Clima Laboral Semanal de Terapeutas", className="mb-0")),
+                    dbc.Col(html.H5([html.I(className="bi bi-heart-pulse me-2 text-primary"), "Feedback y Clima de Terapeutas"], className="mb-0")),
                     dbc.Col(
                         dcc.Dropdown(
                             id="feedback-site-filter",
@@ -116,8 +116,8 @@ layout = dbc.Container([
         dbc.Col([
             dbc.Card([
                 dbc.CardHeader(dbc.Row([
-                    dbc.Col(html.H5("Directorio de Coordinadores de Sede")),
-                    dbc.Col(dbc.Button("Dar de Alta Coordinador", id="btn-open-add-coordinator", color="primary", size="sm", className="float-end"), width="auto")
+                    dbc.Col(html.H5([html.I(className="bi bi-people me-2 text-primary"), "Directorio de Coordinadores de Sede"], className="mb-0")),
+                    dbc.Col(dbc.Button([html.I(className="bi bi-person-plus me-1"), "Dar de Alta Coordinador"], id="btn-open-add-coordinator", color="primary", size="sm", className="float-end"), width="auto")
                 ])),
                 dbc.CardBody([
                     dash_table.DataTable(
@@ -131,12 +131,12 @@ layout = dbc.Container([
                         ],
                         data=[],
                         style_table={'overflowX': 'auto', 'minHeight': '150px'},
-                        style_cell={'textAlign': 'left', 'padding': '10px'},
-                        style_header={'backgroundColor': '#2c3e50', 'color': 'white', 'fontWeight': 'bold'},
+                        style_cell={'textAlign': 'left', 'padding': '10px', 'fontFamily': 'Inter, sans-serif', 'fontSize': '13px'},
+                        style_header={'backgroundColor': '#f0f9fa', 'color': '#0f172a', 'fontWeight': '600', 'borderBottom': '2px solid #00A5B8'},
                         style_data_conditional=[{
                             'if': {'filter_query': '{is_active} = "Inactivo"'},
-                            'backgroundColor': '#ffe6e6',
-                            'color': 'red'
+                            'backgroundColor': '#fef2f2',
+                            'color': '#b91c1c'
                         }]
                     )
                 ])
@@ -182,8 +182,8 @@ layout = dbc.Container([
                     {"name": "Valor Original", "id": "Valor Anterior"},
                     {"name": "Alteración Dictaminada", "id": "Nuevo Valor"}
                 ],
-                style_cell={'textAlign': 'left', 'padding': '5px', 'fontSize': '12px', 'minWidth': '100px'},
-                style_header={'backgroundColor': '#2c3e50', 'color': 'white', 'fontWeight': 'bold'},
+                style_cell={'textAlign': 'left', 'padding': '6px 8px', 'fontSize': '12px', 'minWidth': '100px', 'fontFamily': 'Inter, sans-serif'},
+                style_header={'backgroundColor': '#f0f9fa', 'color': '#0f172a', 'fontWeight': '600', 'borderBottom': '2px solid #00A5B8'},
                 page_size=12,
                 sort_action="native",
                 filter_action="native",
@@ -319,20 +319,22 @@ def update_global_dashboard(n_intervals, selected_site, token):
                     now = pd.Timestamp.now()
                     six_months_ago = now - pd.DateOffset(months=6)
 
-                    # Create multiline graph
+                    # Create multiline graph with ESPORA official palette
                     color_discrete_map = {
-                        "Total (Solicitudes Historicas)": "black",
-                        "En Espera (Sin Asignar)": "red", 
-                        "En Terapia / Atendidos": "blue", 
-                        "Cancelados": "grey"
+                        "Total (Solicitudes Historicas)": "#0f172a",
+                        "En Espera (Sin Asignar)": "#F39221",
+                        "En Terapia / Atendidos": "#00A5B8",
+                        "Cancelados": "#94a3b8"
                     }
                     
                     fig_time = px.line(ts_grouped, x="month", y="count", color="Estado", title=title_ts, markers=True, color_discrete_map=color_discrete_map)
                     fig_time.update_layout(
-                        margin=dict(l=20, r=20, t=30, b=20), 
+                        margin=dict(l=20, r=20, t=35, b=20), 
                         xaxis_title="Mes Calendario", 
                         yaxis_title="Volumen Acumulado",
-                        legend_title="Selecciona cuáles visualizar (Clic)"
+                        legend_title="Indicador",
+                        plot_bgcolor="rgba(0,0,0,0)",
+                        paper_bgcolor="rgba(0,0,0,0)"
                     )
                     # Set the initial viewport to 6 months explicitly
                     fig_time.update_xaxes(range=[six_months_ago.strftime("%Y-%m-01"), now.strftime("%Y-%m-%d")])
@@ -463,7 +465,7 @@ def display_heatmap_drilldown(clickData):
         valor = point.get('z')
         
         return html.Div([
-            html.Strong("🔎 Inspección de Nivel: "),
+            html.Strong([html.I(className="bi bi-search me-1"), "Inspección de Nivel: "]),
             html.Span("Sede "),
             html.Strong(sede, className="text-primary"),
             html.Span(" en el rubro "),
@@ -471,8 +473,8 @@ def display_heatmap_drilldown(clickData):
             html.Span(f" ({valor} registros)."),
             html.Hr(className="my-2"),
             dbc.ButtonGroup([
-                html.A(dbc.Button(f"🏦 Abrir Panel de {sede}", color="primary", size="sm", className="me-2"), href=f"/sede_analytics?sede={sede}", target="_blank"),
-                html.A(dbc.Button(f"📊 Análisis Nacional de {kpi}", color="secondary", outline=True, size="sm"), href=f"/kpi_analytics?kpi={kpi}", target="_blank")
+                html.A(dbc.Button([html.I(className="bi bi-building me-1"), f"Abrir Panel de {sede}"], color="primary", size="sm", className="me-2"), href=f"/sede_analytics?sede={sede}", target="_blank"),
+                html.A(dbc.Button([html.I(className="bi bi-bar-chart me-1"), f"Análisis Nacional de {kpi}"], color="secondary", outline=True, size="sm"), href=f"/kpi_analytics?kpi={kpi}", target="_blank")
             ], className="d-flex w-100")
         ], className="alert alert-secondary py-2")
         
@@ -646,23 +648,27 @@ def update_global_feedback_graphs(site_name, n_intervals, token):
         fig_q1 = px.line(
             grouped, x="Semana", y="q1_score",
             title=title_q1, markers=True,
-            color_discrete_sequence=["#e74c3c"]
+            color_discrete_sequence=["#F39221"]
         )
         fig_q1.update_layout(
             yaxis_title="Puntaje (1 = Nada, 10 = Mucho)",
             yaxis_range=[1, 10],
-            xaxis_title="Semana Calendario"
+            xaxis_title="Semana Calendario",
+            plot_bgcolor="rgba(0,0,0,0)",
+            paper_bgcolor="rgba(0,0,0,0)"
         )
         
         fig_q2 = px.line(
             grouped, x="Semana", y="q2_score",
             title=title_q2, markers=True,
-            color_discrete_sequence=["#2ecc71"]
+            color_discrete_sequence=["#00A5B8"]
         )
         fig_q2.update_layout(
             yaxis_title="Puntaje (1 = Nada, 10 = Mucho)",
             yaxis_range=[1, 10],
-            xaxis_title="Semana Calendario"
+            xaxis_title="Semana Calendario",
+            plot_bgcolor="rgba(0,0,0,0)",
+            paper_bgcolor="rgba(0,0,0,0)"
         )
         
         return fig_q1, fig_q2

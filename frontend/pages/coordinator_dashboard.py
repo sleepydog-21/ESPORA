@@ -1507,25 +1507,172 @@ def download_conglomerate_csv(n_clicks, token):
             'Promedio ¿Cómo calificarías la calidad de la atención recibida?'
         ]
         
-        agg_data = {col: 0 for col in cols} # Default to 0 / empty
-        
-        if len(df) > 0:
-            total_requests = len(df)
-            waiting = len(df[df['status'] == 'WAITING']) if 'status' in df.columns else 0
-            in_treatment = len(df[df['status'].isin(['ASSIGNED', 'ACTIVE'])]) if 'status' in df.columns else 0
-            finished = len(df[df['status'] == 'CLOSED']) if 'status' in df.columns else 0
-            
+        agg_data = {col: 0 for col in cols}
+        agg_data['Sede'] = "Sede ESPORA"
+        agg_data['Semestre'] = "2026-2"
+        agg_data['Tipo de sede '] = "Entidad UNAM"
+        agg_data['¿La sede cuenta con API?'] = "No"
+
+        if len(cases) > 0:
+            first_p = cases[0].get("participant") or {}
+            sede_name = first_p.get("faculty") or "Sede ESPORA"
+            agg_data['Sede'] = sede_name
+            sede_low = sede_name.lower()
+            if "preparatoria" in sede_low or "cch" in sede_low or "enp" in sede_low:
+                agg_data['Tipo de sede '] = "Bachillerato (ENP / CCH)"
+            elif "instituto" in sede_low or "posgrado" in sede_low or "morelos" in sede_low or "cultura" in sede_low:
+                agg_data['Tipo de sede '] = "Instituto / Centro / Coordinación"
+            else:
+                agg_data['Tipo de sede '] = "Facultad / Escuela Nacional"
+
+            total_requests = len(cases)
+            waiting = 0
+            in_treatment = 0
+            finished = 0
+            sol_h, sol_m, att_h, att_m = 0, 0, 0, 0
+            interrupciones, abandonos = 0, 0
+            canal_psiq, canal_otra, ref_ext = 0, 0, 0
+            horas_clinicas_tot, api_personas, api_horas = 0, 0, 0
+            dx_psiq_cnt, internamientos_cnt = 0, 0
+            suic_prev, suic_dur, suic_fin, suic_intentos = 0, 0, 0, 0
+            autolesiones_cnt, viol_gen_cnt, viol_sex_cnt, disid_cnt, disc_cnt, sust_cnt = 0, 0, 0, 0, 0, 0
+
+            # Escalas de sentimiento inicial (1-5)
+            sent_scores = []
+            sent_map_num = {"muy mal": 1, "mal": 2, "regular": 3, "bien": 4, "muy bien": 5}
+
+            for c in cases:
+                st = str(c.get("status", "")).lower()
+                p = c.get("participant") or {}
+                proc = c.get("process_data") or {}
+                meta = p.get("metadata_json") or {}
+
+                if st == "waiting":
+                    waiting += 1
+                elif st in ["assigned", "active"]:
+                    in_treatment += 1
+                elif st == "closed":
+                    finished += 1
+
+                # Género / Sexo real
+                sexo = str(proc.get("sexo") or p.get("gender") or "").strip().lower()
+                is_h = any(k in sexo for k in ["masc", "hombre"])
+                is_m = any(k in sexo for k in ["fem", "mujer"])
+                if is_h:
+                    sol_h += 1
+                    if st in ["assigned", "active", "closed"]:
+                        att_h += 1
+                elif is_m:
+                    sol_m += 1
+                    if st in ["assigned", "active", "closed"]:
+                        att_m += 1
+
+                # Sentimiento inicial
+                sent_txt = str(meta.get("sentimiento") or "").strip().lower()
+                if sent_txt in sent_map_num:
+                    sent_scores.append(sent_map_num[sent_txt])
+
+                # Variables de CaseProcessData
+                estatus_proc = str(proc.get("estatus_proceso") or "").lower()
+                if "interrupci" in estatus_proc:
+                    interrupciones += 1
+                if "abandono" in estatus_proc:
+                    abandonos += 1
+                if proc.get("canalizacion_psiquiatria"):
+                    canal_psiq += 1
+                if proc.get("canalizacion_otra"):
+                    canal_otra += 1
+                if proc.get("referido_externo"):
+                    ref_ext += 1
+                if proc.get("dx_psiquiatria"):
+                    dx_psiq_cnt += 1
+                if proc.get("internamientos_durante"):
+                    internamientos_cnt += 1
+
+                hrs_c = proc.get("horas_clinicas_actual") or 0
+                horas_clinicas_tot += int(hrs_c) if hrs_c else len(c.get("sessions", []))
+
+                if proc.get("tuvo_intervencion_api") or str(c.get("intake_source", "")).lower() == "api":
+                    api_personas += 1
+                    api_horas += int(proc.get("sesiones_api") or 1)
+
+                # Problemáticas trabajadas en sesiones del caso
+                case_flags = set()
+                for s in c.get("sessions", []):
+                    wi = s.get("worked_issues") or {}
+                    if not isinstance(wi, dict):
+                        continue
+                    for k, v in wi.items():
+                        k_up = str(k).upper()
+                        is_present = bool(v.get("checked")) if isinstance(v, dict) else (str(v).lower() in ["true", "presente", "1"] or v is True)
+                        if "AUTOLESION" in k_up and is_present:
+                            case_flags.add("autolesiones")
+                        if "VIOLENCIA DE G" in k_up and is_present:
+                            case_flags.add("viol_gen")
+                        if "VIOLENCIA SEXUAL" in k_up and is_present:
+                            case_flags.add("viol_sex")
+                        if "DISIDENCIA" in k_up and is_present:
+                            case_flags.add("disid")
+                        if "DISCAPACIDAD" in k_up and is_present:
+                            case_flags.add("disc")
+                        if "CONSUMO" in k_up and is_present:
+                            case_flags.add("sust")
+                        if "IDEACIÓN SUICIDA AL INICIAR" in k_up and str(v).lower() == "presente":
+                            case_flags.add("suic_prev")
+                        if "IDEACIÓN SUICIDA AL FINALIZAR" in k_up and str(v).lower() == "presente":
+                            case_flags.add("suic_fin")
+                        if "INTENTOS SUICIDAS DURANTE" in k_up:
+                            try:
+                                if int(v or 0) > 0:
+                                    case_flags.add("suic_intentos")
+                                    case_flags.add("suic_dur")
+                            except Exception:
+                                pass
+
+                if "autolesiones" in case_flags: autolesiones_cnt += 1
+                if "viol_gen" in case_flags: viol_gen_cnt += 1
+                if "viol_sex" in case_flags: viol_sex_cnt += 1
+                if "disid" in case_flags: disid_cnt += 1
+                if "disc" in case_flags: disc_cnt += 1
+                if "sust" in case_flags: sust_cnt += 1
+                if "suic_prev" in case_flags: suic_prev += 1
+                if "suic_dur" in case_flags: suic_dur += 1
+                if "suic_fin" in case_flags: suic_fin += 1
+                if "suic_intentos" in case_flags: suic_intentos += 1
+
             agg_data['# total de solicitudes durante el semestre '] = total_requests
             agg_data['# de solicitudes respondidas (aunque no hayan iniciado proceso psicotrapéutico)'] = total_requests - waiting
             agg_data['# de pacientes que se quedaron en lista de espera'] = waiting
             agg_data['# total de pacientes atendidos en proceso psicoterapéutico'] = in_treatment + finished
-            agg_data['# de pacientes que continúan en tratamiento'] = in_treatment
+            agg_data['# de solicitudes de hombres'] = sol_h
+            agg_data['# de solicitudes de mujeres '] = sol_m
+            agg_data['# de pacientes atendidos Hombres'] = att_h
+            agg_data['# de pacientes atendidas mujeres '] = att_m
             agg_data['# de pacientes que finalizaron tratamiento'] = finished
-            
-            # Additional Mock Data for demonstration until LimeSurvey sync
-            agg_data['# de pacientes atendidos Hombres'] = len(df) // 3
-            agg_data['# de pacientes atendidas mujeres '] = len(df) - (len(df) // 3)
-            
+            agg_data['# de pacientes que continúan en tratamiento'] = in_treatment
+            agg_data['# de interrupciones'] = interrupciones
+            agg_data['# de abandonos'] = abandonos
+            agg_data['# de canalizaciones a psiquiatría '] = canal_psiq
+            agg_data['# de canalizaciones a otra disciplina'] = canal_otra
+            agg_data['# de pacientes referidos a proceso a largo plazo (proceso externo)'] = ref_ext
+            agg_data['# de horas clínicas '] = horas_clinicas_tot
+            agg_data['¿La sede cuenta con API?'] = "Sí" if api_personas > 0 else "No"
+            agg_data['# de personas atendidas por API'] = api_personas
+            agg_data['# de horas clínicas del API'] = api_horas
+            agg_data['# de pacientes con diagnístico psiquiátrico'] = dx_psiq_cnt
+            agg_data['# de internamientos durante el semestre'] = internamientos_cnt
+            agg_data['# de pac con ideación suicida previa al TX'] = suic_prev
+            agg_data['# de pac con ideación suicida durante el TX'] = suic_dur
+            agg_data['# de pac con ideación suicida al finalizar el TX'] = suic_fin
+            agg_data['# de intentos suicidas durante tratamiento'] = suic_intentos
+            agg_data['# de pacientes con autolesiones '] = autolesiones_cnt
+            agg_data['# de pacientes que reportan violencia de género'] = viol_gen_cnt
+            agg_data['# de pacientes que reportan violencia sexual'] = viol_sex_cnt
+            agg_data['# de pacientes pertenecientes a las discidencias sexuales '] = disid_cnt
+            agg_data['# de pacientes con discapacidad '] = disc_cnt
+            agg_data['# de pacientes con problema de consumo de sustancias '] = sust_cnt
+            agg_data['Promedio sensación inicial '] = round(sum(sent_scores) / len(sent_scores), 2) if sent_scores else 0
+
         agg_df = pd.DataFrame([agg_data])
         return dcc.send_data_frame(agg_df.to_csv, "Conglomerado_Consultantes_ESPORA.csv", index=False, encoding='utf-8-sig')
     except Exception as e:

@@ -18,7 +18,7 @@ layout = dbc.Container([
     
     dbc.Row([
         dbc.Col([
-            html.H2("Mi Consultorio 🩺", className="my-2 text-primary"),
+            html.H2([html.I(className="bi bi-heart-pulse me-2 text-primary"), "Mi Consultorio"], className="my-2 text-primary fw-bold"),
         ], width=4),
         dbc.Col([
             dbc.Card([
@@ -36,9 +36,9 @@ layout = dbc.Container([
 
     dbc.Row([
         dbc.Col([
-            dbc.Button("🚨 Protocolo API", id="btn-open-api-walkin", color="warning", className="mb-4 float-start fw-bold shadow-sm px-4"),
-            dbc.Button("📅 Agendar Cita Única", id="btn-add-single", color="outline-primary", className="mb-4 float-end mx-2"),
-            dbc.Button("🗓️ Iniciar Protocolo Bi-semanal", id="btn-open-protocol", color="primary", className="mb-4 float-end")
+            dbc.Button([html.I(className="bi bi-exclamation-triangle-fill me-2"), "Protocolo API"], id="btn-open-api-walkin", color="warning", className="mb-4 float-start fw-bold shadow-sm px-4"),
+            dbc.Button([html.I(className="bi bi-calendar-plus me-2"), "Agendar Cita Única"], id="btn-add-single", color="outline-primary", className="mb-4 float-end mx-2"),
+            dbc.Button([html.I(className="bi bi-calendar2-week me-2"), "Iniciar Protocolo Bi-semanal"], id="btn-open-protocol", color="primary", className="mb-4 float-end")
         ], width=12)
     ]),
     dbc.Alert(id="api-walkin-alert", is_open=False, duration=8000, className="mb-3"),
@@ -73,8 +73,8 @@ layout = dbc.Container([
                         columns=[],
                         data=[],
                         style_table={'overflowX': 'auto', 'height': '500px'},
-                        style_cell={'textAlign': 'left', 'padding': '10px'},
-                        style_header={'backgroundColor': '#f8f9fa', 'fontWeight': 'bold'},
+                        style_cell={'textAlign': 'left', 'padding': '10px', 'fontFamily': 'Inter, sans-serif', 'fontSize': '13px'},
+                        style_header={'backgroundColor': '#f0f9fa', 'color': '#0f172a', 'fontWeight': '600', 'borderBottom': '2px solid #00A5B8'},
                         markdown_options={"html": True}
                     )
                 ])
@@ -120,7 +120,7 @@ layout = dbc.Container([
 
     # Modal Protocolo API Completo (para cualquier terapeuta o personal de API)
     dbc.Modal([
-        dbc.ModalHeader(dbc.ModalTitle("🚨 Protocolo API — Registro de Atención y Contención")),
+        dbc.ModalHeader(dbc.ModalTitle([html.I(className="bi bi-exclamation-triangle-fill me-2 text-warning"), "Protocolo API — Registro de Atención y Contención"])),
         dbc.ModalBody([
             html.P("Cualquier terapeuta o personal de API puede llenar o actualizar este formulario de contención, ya sea para un alumno nuevo que llega de emergencia o para un paciente ya registrado.", className="text-muted small mb-3"),
             dbc.Label("Opcional: Seleccionar Paciente ya registrado (o dejar en blanco para alumno nuevo):", className="small fw-semibold text-primary"),
@@ -224,7 +224,7 @@ layout = dbc.Container([
             dbc.Textarea(id="api-w-obs", rows=2, placeholder="Observaciones clínicas detalladas...", className="mb-3"),
             dbc.Checkbox(
                 id="api-w-derivar-directo",
-                label="🚀 Se refiere a psicoterapia en ESPORA (Pasar a la Lista de Espera de la sede con etiqueta '🚨 Derivado de API')",
+                label="Se refiere a psicoterapia en ESPORA (Pasar a la Lista de Espera de la sede como Derivado de API)",
                 value=False,
                 className="fw-bold text-warning"
             )
@@ -290,7 +290,7 @@ layout = dbc.Container([
 
     # Modal de Feedback Semanal (Burnout)
     dbc.Modal([
-        dbc.ModalHeader(dbc.ModalTitle("🩺 Encuesta Semanal de Bienestar y Respaldo")),
+        dbc.ModalHeader(dbc.ModalTitle([html.I(className="bi bi-heart-pulse me-2 text-primary"), "Encuesta Semanal de Bienestar y Respaldo"])),
         dbc.ModalBody([
             html.P("Como parte de nuestro compromiso con el cuidado de tu salud mental y el acompañamiento clínico en el programa ESPORA, te pedimos responder brevemente a estas 2 preguntas. Solo te tomará unos segundos:", className="text-muted small"),
             html.Hr(),

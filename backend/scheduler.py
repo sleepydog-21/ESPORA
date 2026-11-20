@@ -86,6 +86,20 @@ def check_dropout_risk():
     finally:
         db.close()
 
+def run_limesurvey_sync():
+    db = SessionLocal()
+    try:
+        from services.limesurvey_service import limesurvey_service
+        report = limesurvey_service.sync_responses(survey_id=None, db=db)
+        new_c = report.get("new_cases", 0)
+        new_f = report.get("followup_submissions", 0)
+        if new_c > 0 or new_f > 0:
+            print(f"[Scheduler LimeSurvey] Sincronizados {new_c} nuevos casos y {new_f} cuestionarios de seguimiento.")
+    except Exception as e:
+        print("Scheduler LimeSurvey Sync warning:", e)
+    finally:
+        db.close()
+
 def run_db_backup():
     try:
         from scripts.backup_db import backup
@@ -97,6 +111,8 @@ def start_scheduler():
     scheduler = BackgroundScheduler()
     # Runs every minute for demonstration reactivity
     scheduler.add_job(check_alert_thresholds, 'interval', minutes=1)
+    # Auto-sync LimeSurvey surveys (118334, 228334, 338334) every 5 minutes
+    scheduler.add_job(run_limesurvey_sync, 'interval', minutes=5)
     # Drop-out detector runs every 1 hour realistically
     scheduler.add_job(check_dropout_risk, 'interval', hours=1)
     # Database backup runs every 12 hours
