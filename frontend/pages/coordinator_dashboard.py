@@ -201,6 +201,11 @@ layout = dbc.Container([
                             style_header={'backgroundColor': '#f8f9fa', 'fontWeight': 'bold'},
                         )
                     ], width=12, md=6),
+                ], className="mb-4"),
+                html.Hr(className="my-4"),
+                dbc.Row([
+                    dbc.Col(dcc.Loading(dcc.Graph(id="site-weekly-hours-graph")), width=12, lg=6, className="mb-3"),
+                    dbc.Col(dcc.Loading(dcc.Graph(id="site-demand-evolution-graph")), width=12, lg=6, className="mb-3"),
                 ])
             ]), className="border-top-0 border-light mb-4 shadow-sm"),
             label="Métricas de la Sede"
@@ -262,7 +267,7 @@ layout = dbc.Container([
         ),
         dbc.Tab(
             dbc.Card(dbc.CardBody([
-                html.H5("Feedback y Clima Laboral de Terapeutas (Burnout)", className="mb-2"),
+                html.H5("Feedback y Clima de Terapeutas (Burnout)", className="mb-2"),
                 html.P("Monitoreo del impacto de la carga administrativa y el nivel de respaldo clínico del programa en el equipo de terapeutas.", className="text-muted small mb-4"),
                 dbc.Row([
                     dbc.Col([
@@ -279,7 +284,7 @@ layout = dbc.Container([
                     ], width=12, md=6),
                 ])
             ]), className="border-top-0 border-light mb-4 shadow-sm"),
-            label="Clima Laboral"
+            label="Clima de Terapeutas"
         ),
     ], id="coord-tabs", active_tab="tab-waitlist"),
     
@@ -711,14 +716,18 @@ def load_waitlist(pathname, active_tab, modal_open, sync_trigger, token):
     Output("kpi-unassigned", "children"),
     Output("kpi-active", "children"),
     Output("kpi-therapists", "children"),
+    Output("site-weekly-hours-graph", "figure"),
+    Output("site-demand-evolution-graph", "figure"),
     Input("coord-url", "pathname"),
     Input("auth-token", "data"),
     Input("sync-limesurvey-trigger", "data"),
     prevent_initial_call=False
 )
 def load_site_metrics(pathname, token, sync_trigger=None):
+    empty_hours = go.Figure().update_layout(title="Horas Clínicas por Semana (Sin sesiones registradas aún)")
+    empty_demand = go.Figure().update_layout(title="Evolución de Solicitudes, Atendidos y Lista de Espera (Sin datos aún)")
     if not token:
-        return go.Figure(), [], "0", "0", "0"
+        return go.Figure(), [], "0", "0", "0", empty_hours, empty_demand
         
     headers = {"Authorization": f"Bearer {token}"}
     try:
@@ -735,7 +744,7 @@ def load_site_metrics(pathname, token, sync_trigger=None):
         if res_cases.status_code == 200:
             cases = res_cases.json()
             if not cases:
-                return go.Figure(), [], "0", "0", str(num_therapists)
+                return go.Figure(), [], "0", "0", str(num_therapists), empty_hours, empty_demand
                 
             df = pd.json_normalize(cases)
             status_map = {"waiting": "Lista de Espera", "assigned": "Asignado", "active": "Activo", "closed": "Cerrado"}
@@ -751,26 +760,24 @@ def load_site_metrics(pathname, token, sync_trigger=None):
             # Pie chart by status
             status_counts = df['Estado'].value_counts().reset_index()
             status_counts.columns = ['Estado', 'Cantidad']
-            pie_fig = px.pie(status_counts, names='Estado', values='Cantidad', title='Distribución de Casos por Estado', hole=0.3)
+            pie_fig = px.pie(
+                status_counts, names='Estado', values='Cantidad',
+                title='Distribución de Casos por Estado', hole=0.35,
+                color_discrete_sequence=["#00A5B8", "#F39221", "#16a34a", "#64748b"]
+            )
             
             # Table by therapist (splitting assigned vs active)
             all_therapists_names = list(therapist_dict.values())
             
             assigned_cases = df[df['status'].isin(['assigned', 'active'])]
             if not assigned_cases.empty:
-                # Group by therapist and status
                 grouped = assigned_cases.groupby(['Terapeuta', 'status']).size().unstack(fill_value=0).reset_index()
-                
-                # Ensure columns exist even if no cases
                 if 'assigned' not in grouped.columns:
                     grouped['assigned'] = 0
                 if 'active' not in grouped.columns:
                     grouped['active'] = 0
-                    
                 grouped = grouped[['Terapeuta', 'assigned', 'active']]
                 grouped.columns = ['Terapeuta', 'Asignados', 'Activos']
-                
-                # Merge with all therapists to ensure 0s are shown
                 all_th_df = pd.DataFrame({'Terapeuta': all_therapists_names})
                 therapist_counts = pd.merge(all_th_df, grouped, on='Terapeuta', how='left').fillna(0)
                 therapist_counts['Asignados'] = therapist_counts['Asignados'].astype(int)
@@ -779,15 +786,100 @@ def load_site_metrics(pathname, token, sync_trigger=None):
             else:
                 therapist_counts = pd.DataFrame({'Terapeuta': all_therapists_names, 'Asignados': 0, 'Activos': 0, 'Total': 0})
                 
-            # Sort by Total descending
             therapist_counts = therapist_counts.sort_values(by="Total", ascending=False)
             table_data = therapist_counts.to_dict('records')
+
+            # ------------------------------------------------------------------
+            # Gráfica 1: Horas Clínicas por Semana (Solicitadas, Atendidas, Canceladas)
+            # ------------------------------------------------------------------
+            session_rows = []
+            for c in cases:
+                for s in c.get("sessions", []):
+                    s_dt = s.get("session_date")
+                    if not s_dt:
+                        continue
+                    try:
+                        dt = pd.to_datetime(s_dt)
+                        iso = dt.isocalendar()
+                        week_label = f"{iso.year}-S{str(iso.week).zfill(2)}"
+                        st = str(s.get("status", "scheduled")).lower()
+                        session_rows.append({"Semana": week_label, "status": st})
+                    except Exception:
+                        pass
+
+            if session_rows:
+                df_sess = pd.DataFrame(session_rows)
+                weekly_summary = []
+                for wk, grp in df_sess.groupby("Semana"):
+                    total_sol = len(grp)
+                    atendidas = int((grp["status"] == "completed").sum())
+                    programadas = int((grp["status"] == "scheduled").sum())
+                    canceladas = int((grp["status"] == "cancelled").sum())
+                    weekly_summary.append({"Semana": wk, "Categoría": "Horas Solicitadas (Total)", "Horas": total_sol})
+                    weekly_summary.append({"Semana": wk, "Categoría": "Horas Atendidas", "Horas": atendidas})
+                    weekly_summary.append({"Semana": wk, "Categoría": "Horas Programadas (Pend.)", "Horas": programadas})
+                    weekly_summary.append({"Semana": wk, "Categoría": "Horas Canceladas / Inasist.", "Horas": canceladas})
+                df_wk_hrs = pd.DataFrame(weekly_summary).sort_values("Semana")
+                hours_fig = px.bar(
+                    df_wk_hrs, x="Semana", y="Horas", color="Categoría", barmode="group",
+                    title="Horas Clínicas por Semana (Solicitadas, Atendidas y Canceladas)",
+                    color_discrete_map={
+                        "Horas Solicitadas (Total)": "#00A5B8",
+                        "Horas Atendidas": "#16a34a",
+                        "Horas Programadas (Pend.)": "#F39221",
+                        "Horas Canceladas / Inasist.": "#ef4444"
+                    }
+                )
+                hours_fig.update_layout(xaxis_title="Semana", yaxis_title="Horas", legend_title_text="")
+            else:
+                hours_fig = empty_hours
+
+            # ------------------------------------------------------------------
+            # Gráfica 2: Evolución de Solicitudes, Personas Atendidas y Lista de Espera
+            # ------------------------------------------------------------------
+            demand_rows = []
+            for c in cases:
+                c_dt = c.get("created_at")
+                if not c_dt:
+                    continue
+                try:
+                    dt = pd.to_datetime(c_dt)
+                    iso = dt.isocalendar()
+                    week_label = f"{iso.year}-S{str(iso.week).zfill(2)}"
+                    st = str(c.get("status", "waiting")).lower()
+                    demand_rows.append({"Semana": week_label, "status": st})
+                except Exception:
+                    pass
+
+            if demand_rows:
+                df_dem = pd.DataFrame(demand_rows)
+                dem_summary = []
+                for wk, grp in df_dem.groupby("Semana"):
+                    solicitadas = len(grp)
+                    atendidas = int(grp["status"].isin(["assigned", "active", "closed"]).sum())
+                    en_espera = int((grp["status"] == "waiting").sum())
+                    dem_summary.append({"Semana": wk, "Indicador": "Atenciones Solicitadas", "Personas": solicitadas})
+                    dem_summary.append({"Semana": wk, "Indicador": "Personas Atendidas", "Personas": atendidas})
+                    dem_summary.append({"Semana": wk, "Indicador": "En Lista de Espera", "Personas": en_espera})
+                df_dem_plot = pd.DataFrame(dem_summary).sort_values("Semana")
+                demand_fig = px.line(
+                    df_dem_plot, x="Semana", y="Personas", color="Indicador", markers=True,
+                    title="Evolución Semanal: Solicitudes vs. Atendidos vs. Lista de Espera",
+                    color_discrete_map={
+                        "Atenciones Solicitadas": "#00A5B8",
+                        "Personas Atendidas": "#16a34a",
+                        "En Lista de Espera": "#F39221"
+                    }
+                )
+                demand_fig.update_layout(xaxis_title="Semana", yaxis_title="Número de Personas", legend_title_text="")
+            else:
+                demand_fig = empty_demand
             
-            return pie_fig, table_data, str(unassigned_count), str(active_count), str(num_therapists)
+            return pie_fig, table_data, str(unassigned_count), str(active_count), str(num_therapists), hours_fig, demand_fig
     except Exception as e:
         print(f"Error cargando gráficas de sede: {e}")
         
-    return go.Figure(), [], "0", "0", "0"
+    return go.Figure(), [], "0", "0", "0", empty_hours, empty_demand
 
 @callback(
     Output("download-dataframe-csv", "data"),
