@@ -40,14 +40,28 @@ def layout(case_id=None, **kwargs):
                     ])
                 ], className="mb-4 shadow-sm border-0 glass-card"),
                 
-                # Anexo Rápido (Nota / Foto / Archivo)
+                # Notas Clínicas y Notas de Voz (Grabadora + Adjuntos)
                 dbc.Card([
-                    dbc.CardHeader(html.H5("Anexo Rápido (Nota / Foto / Archivo)")),
+                    dbc.CardHeader(html.H5("📝 Notas Clínicas y 🎙️ Notas de Voz")),
                     dbc.CardBody([
-                        dbc.Textarea(id="quick-submission-free-notes", placeholder="Escribe aquí notas clínicas libres, observaciones o transcripción...", rows=3, className="mb-3"),
+                        dbc.Label("Nota Clínica Escrita:", className="small fw-semibold text-secondary mb-1"),
+                        dbc.Textarea(id="quick-submission-free-notes", placeholder="Escribe aquí notas clínicas de sesión, observaciones, acuerdos o transcripción...", rows=4, className="mb-3"),
+
+                        dbc.Label("Grabar Nota de Voz (Micrófono):", className="small fw-semibold text-secondary mb-1"),
+                        dbc.Row([
+                            dbc.Col(dbc.Button("🎙️ Grabar Nota de Voz", id="btn-voice-start", color="danger", outline=True, size="sm", className="w-100 fw-semibold"), width=7),
+                            dbc.Col(dbc.Button("⏹️ Detener", id="btn-voice-stop", color="secondary", size="sm", disabled=True, className="w-100 fw-semibold"), width=5),
+                        ], className="mb-1"),
+                        html.Div(id="voice-status-text", className="small text-muted mb-1"),
+                        html.Div(id="voice-preview-container", className="mb-2"),
+                        dcc.Input(id="voice-recording-data", type="hidden", value=""),
+                        html.Div(id="voice-dummy-start", style={"display": "none"}),
+                        html.Div(id="voice-dummy-stop", style={"display": "none"}),
+
+                        dbc.Label("O adjuntar archivo (Audio MP3/WAV/M4A, Imagen o PDF):", className="small fw-semibold text-secondary mt-2 mb-1"),
                         dcc.Upload(
                             id="quick-submission-upload",
-                            children=html.Div(["Arrastra y suelta o selecciona un archivo (Imagen, PDF, Texto)"]),
+                            children=html.Div(["Arrastra y suelta o selecciona un archivo (Audio, Imagen, PDF, Texto)"]),
                             style={
                                 'width': '100%',
                                 'height': '50px',
@@ -63,7 +77,7 @@ def layout(case_id=None, **kwargs):
                         ),
                         html.Div(id="quick-submission-upload-preview", className="mb-2 text-muted small"),
                         dcc.Store(id="quick-submission-upload-store", data=None),
-                        dbc.Button("💾 Anexar al Expediente", id="btn-submit-quick-submission", color="success", className="w-100"),
+                        dbc.Button("💾 Guardar Nota Clínica / Nota de Voz en Expediente", id="btn-submit-quick-submission", color="success", className="w-100 fw-semibold"),
                         dbc.Alert(id="quick-submission-alert", is_open=False, color="success", className="mt-3")
                     ])
                 ], className="mb-4 shadow-sm border-0 glass-card"),
@@ -770,6 +784,19 @@ def load_submissions(case_id, modal_open, quick_alert_open, ls_sync_trigger, tok
                                 "whiteSpace": "pre-wrap"
                             }, className="small p-2 rounded mb-2")
                         ]))
+                    elif "audio/" in ctype or fname.lower().endswith((".webm", ".mp3", ".wav", ".m4a", ".ogg", ".aac")):
+                        audio_mime = ctype if "audio/" in ctype else "audio/webm"
+                        audio_src = f"data:{audio_mime};base64,{fdata}"
+                        attachments_ui.append(html.Div([
+                            html.Strong(f"🎙️ Nota de Voz ({fname}):", className="small text-primary d-block mb-1"),
+                            html.Audio(
+                                src=audio_src,
+                                controls=True,
+                                style={"width": "100%", "height": "40px"},
+                                className="mt-1"
+                            ),
+                            html.A("⬇️ Descargar audio", href=audio_src, download=fname, className="small text-muted text-decoration-none d-inline-block mt-1")
+                        ], className="mb-2 p-2 bg-light rounded border"))
                     elif "image/" in ctype or fname.endswith((".png", ".jpg", ".jpeg", ".webp", ".gif")):
                         image_src = f"data:{ctype};base64,{fdata}"
                         attachments_ui.append(html.Div([
@@ -1467,6 +1494,20 @@ def handle_quick_file_upload(contents, filename):
     except Exception as e:
         return None, f"Error al procesar el archivo: {str(e)}"
 
+dash.clientside_callback(
+    dash.ClientsideFunction(namespace="voice", function_name="startRecording"),
+    Output("voice-dummy-start", "children"),
+    Input("btn-voice-start", "n_clicks"),
+    prevent_initial_call=True
+)
+
+dash.clientside_callback(
+    dash.ClientsideFunction(namespace="voice", function_name="stopRecording"),
+    Output("voice-dummy-stop", "children"),
+    Input("btn-voice-stop", "n_clicks"),
+    prevent_initial_call=True
+)
+
 @callback(
     Output("quick-submission-alert", "children"),
     Output("quick-submission-alert", "is_open"),
@@ -1474,19 +1515,31 @@ def handle_quick_file_upload(contents, filename):
     Output("quick-submission-free-notes", "value"),
     Output("quick-submission-upload-store", "data", allow_duplicate=True),
     Output("quick-submission-upload-preview", "children", allow_duplicate=True),
+    Output("voice-recording-data", "value"),
+    Output("voice-preview-container", "children"),
+    Output("voice-status-text", "children"),
     Input("btn-submit-quick-submission", "n_clicks"),
     State("quick-submission-free-notes", "value"),
     State("quick-submission-upload-store", "data"),
+    State("voice-recording-data", "value"),
     State("current-case-id", "data"),
     State("auth-token", "data"),
     prevent_initial_call=True
 )
-def save_quick_submission(n_clicks, free_notes_val, upload_data, case_id, token):
+def save_quick_submission(n_clicks, free_notes_val, upload_data, voice_data_json, case_id, token):
     if not n_clicks:
-        return dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
-        
-    if (not free_notes_val or not free_notes_val.strip()) and not upload_data:
-        return "Debe escribir una nota o adjuntar un archivo.", True, "warning", dash.no_update, dash.no_update, dash.no_update
+        return (dash.no_update,) * 9
+
+    voice_attachment = None
+    if voice_data_json and str(voice_data_json).strip():
+        try:
+            import json
+            voice_attachment = json.loads(voice_data_json)
+        except Exception:
+            voice_attachment = None
+
+    if (not free_notes_val or not free_notes_val.strip()) and not upload_data and not voice_attachment:
+        return "Debe escribir una nota clínica, grabar una nota de voz o adjuntar un archivo.", True, "warning", dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
         
     headers = {"Authorization": f"Bearer {token}"}
     
@@ -1500,10 +1553,10 @@ def save_quick_submission(n_clicks, free_notes_val, upload_data, case_id, token)
                     template_id = t["id"]
                     break
     except Exception as e:
-        return f"Error al consultar plantillas: {str(e)}", True, "danger", dash.no_update, dash.no_update, dash.no_update
+        return f"Error al consultar plantillas: {str(e)}", True, "danger", dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
         
     if not template_id:
-        return "No se encontró la plantilla 'Nota Libre / Expediente Físico (Adjunto)' en el sistema.", True, "danger", dash.no_update, dash.no_update, dash.no_update
+        return "No se encontró la plantilla 'Nota Libre / Expediente Físico (Adjunto)' en el sistema.", True, "danger", dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
         
     attachments_payload = []
     
@@ -1512,11 +1565,15 @@ def save_quick_submission(n_clicks, free_notes_val, upload_data, case_id, token)
         import base64
         encoded_note = base64.b64encode(free_notes_val.encode("utf-8")).decode("utf-8")
         attachments_payload.append({
-            "filename": "nota_libre.txt",
+            "filename": "nota_clinica.txt",
             "content_type": "text/plain",
             "file_data": encoded_note
         })
         
+    # Handle recorded voice note attachment
+    if voice_attachment:
+        attachments_payload.append(voice_attachment)
+
     # Handle uploaded file attachment
     if upload_data:
         attachments_payload.append(upload_data)
@@ -1531,11 +1588,11 @@ def save_quick_submission(n_clicks, free_notes_val, upload_data, case_id, token)
     try:
         res = requests.post(f"{API_URL}/fields/submissions", json=payload, headers=headers)
         if res.status_code == 200:
-            return "Anexo guardado exitosamente en el expediente.", True, "success", "", None, ""
+            return "✅ Nota clínica / nota de voz guardada exitosamente en el expediente.", True, "success", "", None, "", "", "", ""
         else:
-            return f"Error al guardar el anexo: {res.text}", True, "danger", dash.no_update, dash.no_update, dash.no_update
+            return f"Error al guardar la nota: {res.text}", True, "danger", dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
     except Exception as e:
-        return f"Error de conexión: {str(e)}", True, "danger", dash.no_update, dash.no_update, dash.no_update
+        return f"Error de conexión: {str(e)}", True, "danger", dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
 @callback(
     Output("download-history-file", "data"),
