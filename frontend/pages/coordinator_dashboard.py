@@ -171,17 +171,21 @@ layout = dbc.Container([
                 dcc.Download(id="download-dataframe-csv"),
                 dbc.Row([
                     dbc.Col(dbc.Card(dbc.CardBody([
-                        html.H4(id="kpi-unassigned", className="text-primary"),
-                        html.P("Pacientes No Asignados", className="text-muted mb-0")
-                    ]), className="text-center shadow-sm mb-3"), width=4),
+                        html.H4(id="kpi-unassigned", className="text-primary fw-bold"),
+                        html.P("Pacientes No Asignados", className="text-muted mb-0 small")
+                    ]), className="text-center shadow-sm mb-3"), width=6, md=3),
                     dbc.Col(dbc.Card(dbc.CardBody([
-                        html.H4(id="kpi-active", className="text-success"),
-                        html.P("Consultantes Activos", className="text-muted mb-0")
-                    ]), className="text-center shadow-sm mb-3"), width=4),
+                        html.H4(id="kpi-active", className="text-success fw-bold"),
+                        html.P("Consultantes Activos", className="text-muted mb-0 small")
+                    ]), className="text-center shadow-sm mb-3"), width=6, md=3),
                     dbc.Col(dbc.Card(dbc.CardBody([
-                        html.H4(id="kpi-therapists", className="text-info"),
-                        html.P("Terapeutas en Sede", className="text-muted mb-0")
-                    ]), className="text-center shadow-sm mb-3"), width=4),
+                        html.H4(id="kpi-api-patients", className="fw-bold", style={"color": "#F39221"}),
+                        html.P([html.I(className="bi bi-exclamation-triangle-fill me-1", style={"color": "#F39221"}), "Pacientes API"], className="text-muted mb-0 small")
+                    ]), className="text-center shadow-sm mb-3", style={"borderTop": "3px solid #F39221"}), width=6, md=3),
+                    dbc.Col(dbc.Card(dbc.CardBody([
+                        html.H4(id="kpi-therapists", className="text-info fw-bold"),
+                        html.P("Terapeutas en Sede", className="text-muted mb-0 small")
+                    ]), className="text-center shadow-sm mb-3"), width=6, md=3),
                 ]),
                 dbc.Row([
                     dbc.Col(dcc.Graph(id="site-metrics-pie"), width=12, md=6),
@@ -715,6 +719,7 @@ def load_waitlist(pathname, active_tab, modal_open, sync_trigger, token):
     Output("therapists-load-table", "data"),
     Output("kpi-unassigned", "children"),
     Output("kpi-active", "children"),
+    Output("kpi-api-patients", "children"),
     Output("kpi-therapists", "children"),
     Output("site-weekly-hours-graph", "figure"),
     Output("site-demand-evolution-graph", "figure"),
@@ -727,7 +732,7 @@ def load_site_metrics(pathname, token, sync_trigger=None):
     empty_hours = go.Figure().update_layout(title="Horas Clínicas por Semana (Sin sesiones registradas aún)")
     empty_demand = go.Figure().update_layout(title="Evolución de Solicitudes, Atendidos y Lista de Espera (Sin datos aún)")
     if not token:
-        return go.Figure(), [], "0", "0", "0", empty_hours, empty_demand
+        return go.Figure(), [], "0", "0", "0", "0", empty_hours, empty_demand
         
     headers = {"Authorization": f"Bearer {token}"}
     try:
@@ -744,8 +749,19 @@ def load_site_metrics(pathname, token, sync_trigger=None):
         if res_cases.status_code == 200:
             cases = res_cases.json()
             if not cases:
-                return go.Figure(), [], "0", "0", str(num_therapists), empty_hours, empty_demand
+                return go.Figure(), [], "0", "0", "0", str(num_therapists), empty_hours, empty_demand
                 
+            def _is_api_case(c):
+                proc = c.get("process_data") or {}
+                meta = (c.get("participant") or {}).get("metadata_json") or {}
+                return (
+                    str(c.get("intake_source", "")).lower() == "api"
+                    or bool(proc.get("tuvo_intervencion_api"))
+                    or bool(meta.get("derivado_de_api"))
+                )
+
+            api_patients_count = sum(1 for c in cases if _is_api_case(c))
+
             df = pd.json_normalize(cases)
             status_map = {"waiting": "Lista de Espera", "assigned": "Asignado", "active": "Activo", "closed": "Cerrado"}
             df['Estado'] = df['status'].map(status_map)
@@ -835,7 +851,7 @@ def load_site_metrics(pathname, token, sync_trigger=None):
                 hours_fig = empty_hours
 
             # ------------------------------------------------------------------
-            # Gráfica 2: Evolución de Solicitudes, Personas Atendidas y Lista de Espera
+            # Gráfica 2: Evolución de Solicitudes, Personas Atendidas, Lista de Espera y API
             # ------------------------------------------------------------------
             demand_rows = []
             for c in cases:
@@ -847,7 +863,7 @@ def load_site_metrics(pathname, token, sync_trigger=None):
                     iso = dt.isocalendar()
                     week_label = f"{iso.year}-S{str(iso.week).zfill(2)}"
                     st = str(c.get("status", "waiting")).lower()
-                    demand_rows.append({"Semana": week_label, "status": st})
+                    demand_rows.append({"Semana": week_label, "status": st, "is_api": _is_api_case(c)})
                 except Exception:
                     pass
 
@@ -858,28 +874,31 @@ def load_site_metrics(pathname, token, sync_trigger=None):
                     solicitadas = len(grp)
                     atendidas = int(grp["status"].isin(["assigned", "active", "closed"]).sum())
                     en_espera = int((grp["status"] == "waiting").sum())
+                    api_wk = int(grp["is_api"].sum())
                     dem_summary.append({"Semana": wk, "Indicador": "Atenciones Solicitadas", "Personas": solicitadas})
                     dem_summary.append({"Semana": wk, "Indicador": "Personas Atendidas", "Personas": atendidas})
                     dem_summary.append({"Semana": wk, "Indicador": "En Lista de Espera", "Personas": en_espera})
+                    dem_summary.append({"Semana": wk, "Indicador": "Pacientes API", "Personas": api_wk})
                 df_dem_plot = pd.DataFrame(dem_summary).sort_values("Semana")
                 demand_fig = px.line(
                     df_dem_plot, x="Semana", y="Personas", color="Indicador", markers=True,
-                    title="Evolución Semanal: Solicitudes vs. Atendidos vs. Lista de Espera",
+                    title="Evolución Semanal: Solicitudes, Atendidos, Lista de Espera y API",
                     color_discrete_map={
                         "Atenciones Solicitadas": "#00A5B8",
                         "Personas Atendidas": "#16a34a",
-                        "En Lista de Espera": "#F39221"
+                        "En Lista de Espera": "#F39221",
+                        "Pacientes API": "#dc2626"
                     }
                 )
                 demand_fig.update_layout(xaxis_title="Semana", yaxis_title="Número de Personas", legend_title_text="")
             else:
                 demand_fig = empty_demand
             
-            return pie_fig, table_data, str(unassigned_count), str(active_count), str(num_therapists), hours_fig, demand_fig
+            return pie_fig, table_data, str(unassigned_count), str(active_count), str(api_patients_count), str(num_therapists), hours_fig, demand_fig
     except Exception as e:
         print(f"Error cargando gráficas de sede: {e}")
         
-    return go.Figure(), [], "0", "0", "0", empty_hours, empty_demand
+    return go.Figure(), [], "0", "0", "0", "0", empty_hours, empty_demand
 
 @callback(
     Output("download-dataframe-csv", "data"),

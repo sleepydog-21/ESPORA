@@ -28,29 +28,35 @@ layout = dbc.Container([
     dbc.Row([
         dbc.Col(dbc.Card([
             dbc.CardBody([
-                html.H6("Total de Solicitudes", className="text-muted"),
-                html.H3(id="kpi-total-cases", children="-")
+                html.H6("Total de Solicitudes", className="text-muted small"),
+                html.H3(id="kpi-total-cases", children="-", className="fw-bold")
             ])
-        ], className="border-primary shadow-sm"), width=3),
+        ], className="border-primary shadow-sm h-100"), className="mb-2"),
         dbc.Col(dbc.Card([
             dbc.CardBody([
-                html.H6("En Lista de Espera Global", className="text-muted"),
-                html.H3(id="kpi-waiting-cases", children="-", className="text-warning")
+                html.H6("En Lista de Espera Global", className="text-muted small"),
+                html.H3(id="kpi-waiting-cases", children="-", className="text-warning fw-bold")
             ])
-        ], className="border-warning shadow-sm"), width=3),
+        ], className="border-warning shadow-sm h-100"), className="mb-2"),
         dbc.Col(dbc.Card([
             dbc.CardBody([
-                html.H6("Activos / En Terapia", className="text-muted"),
-                html.H3(id="kpi-active-cases", children="-", className="text-success")
+                html.H6("Activos / En Terapia", className="text-muted small"),
+                html.H3(id="kpi-active-cases", children="-", className="text-success fw-bold")
             ])
-        ], className="border-success shadow-sm"), width=3),
+        ], className="border-success shadow-sm h-100"), className="mb-2"),
         dbc.Col(dbc.Card([
             dbc.CardBody([
-                html.H6("Alertas Detonadas", className="text-muted"),
-                html.H3(id="kpi-active-alerts", children="-", className="text-danger")
+                html.H6([html.I(className="bi bi-exclamation-triangle-fill me-1", style={"color": "#F39221"}), "Pacientes API"], className="text-muted small"),
+                html.H3(id="kpi-api-cases", children="-", className="fw-bold", style={"color": "#F39221"})
             ])
-        ], className="border-danger shadow-sm"), width=3)
-    ], className="mb-4"),
+        ], className="shadow-sm h-100", style={"borderColor": "#F39221"}), className="mb-2"),
+        dbc.Col(dbc.Card([
+            dbc.CardBody([
+                html.H6("Alertas Detonadas", className="text-muted small"),
+                html.H3(id="kpi-active-alerts", children="-", className="text-danger fw-bold")
+            ])
+        ], className="border-danger shadow-sm h-100"), className="mb-2")
+    ], className="mb-4 row-cols-2 row-cols-md-5 g-3"),
 
     # Main Analytics Row
     dbc.Row([
@@ -257,6 +263,7 @@ layout = dbc.Container([
     Output("kpi-total-cases", "children"),
     Output("kpi-waiting-cases", "children"),
     Output("kpi-active-cases", "children"),
+    Output("kpi-api-cases", "children"),
     Output("kpi-active-alerts", "children"),
     Output("global-time-series", "figure"),
     Output("global-site-heatmap", "figure"),
@@ -268,7 +275,7 @@ layout = dbc.Container([
 )
 def update_global_dashboard(n_intervals, selected_site, token):
     if not token:
-        return "-", "-", "-", "-", {}, {}, [{"label": "Todas (Global)", "value": "ALL"}], [{"label": "Todas (Global)", "value": "ALL"}]
+        return "-", "-", "-", "-", "-", {}, {}, [{"label": "Todas (Global)", "value": "ALL"}], [{"label": "Todas (Global)", "value": "ALL"}]
         
     headers = {"Authorization": f"Bearer {token}"}
     try:
@@ -279,6 +286,7 @@ def update_global_dashboard(n_intervals, selected_site, token):
             site_stats = pd.DataFrame(data.get("site_stats", []))
             time_series = pd.DataFrame(data.get("time_series", []))
             alerts = data.get("active_alerts", [])
+            api_cases_count = int(data.get("api_cases_count", 0))
             
             options_dropdown = [{"label": "Todas (Global)", "value": "ALL"}]
             if not site_stats.empty:
@@ -367,12 +375,12 @@ def update_global_dashboard(n_intervals, selected_site, token):
                     coloraxis_showscale=False
                 )
                 
-            return f"{total_cases:,}", f"{waiting:,}", f"{active:,}", str(len(alerts)), fig_time, fig_site, options_dropdown, options_dropdown
+            return f"{total_cases:,}", f"{waiting:,}", f"{active:,}", f"{api_cases_count:,}", str(len(alerts)), fig_time, fig_site, options_dropdown, options_dropdown
             
     except Exception as e:
         print("Error fetching global metrics:", e)
         
-    return "-", "-", "-", "-", {}, {}, [{"label": "Todas (Global)", "value": "ALL"}], [{"label": "Todas (Global)", "value": "ALL"}]
+    return "-", "-", "-", "-", "-", {}, {}, [{"label": "Todas (Global)", "value": "ALL"}], [{"label": "Todas (Global)", "value": "ALL"}]
 
 @callback(
     Output("alerts-config-modal", "is_open"),

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from typing import List, Dict, Any
 
 import models, schemas, auth
@@ -42,9 +42,20 @@ def get_global_metrics(
         models.Notification.user_id == current_user.id
     ).order_by(models.Notification.created_at.desc()).all()
 
+    # 4. API Patients count (intake_source == 'api' or tuvo_intervencion_api == True)
+    api_cases_count = db.query(func.count(func.distinct(models.Case.id))).outerjoin(
+        models.CaseProcessData, models.Case.id == models.CaseProcessData.case_id
+    ).filter(
+        or_(
+            models.Case.intake_source == "api",
+            models.CaseProcessData.tuvo_intervencion_api == True
+        )
+    ).scalar() or 0
+
     return {
         "site_stats": [{"site": row[0], "status": row[1], "count": row[2]} for row in site_stats],
         "time_series": [{"site": row[0], "month": str(row[1].date()) if row[1] else None, "status": row[2], "count": row[3]} for row in time_series],
+        "api_cases_count": int(api_cases_count),
         "active_alerts": [
             {"id": a.id, "message": a.message, "site_id": a.site_id, "created_at": a.created_at} 
             for a in active_alerts
