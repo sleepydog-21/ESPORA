@@ -219,10 +219,23 @@ layout = dbc.Container([
                 html.Div([
                     html.H5("Rendimiento de Terapeutas", className="d-inline-block"),
                     html.Div([
-                        dbc.Button("Descargar Reporte Completo", id="btn-download-therapist-conglomerate", color="success", size="sm", className="me-2"),
-                        dbc.Button("Editar Directorio", id="btn-open-therapists-modal", color="secondary", size="sm")
+                        dbc.Button([html.I(className="bi bi-file-earmark-spreadsheet me-1"), "Descargar Reporte Completo"], id="btn-download-therapist-conglomerate", color="success", size="sm", className="me-2"),
+                        dbc.Button([html.I(className="bi bi-people me-1"), "Editar Directorio"], id="btn-open-therapists-modal", color="secondary", size="sm")
                     ], className="float-end")
-                ], className="mb-4 w-100"),
+                ], className="mb-3 w-100"),
+                dbc.Card([
+                    dbc.CardBody([
+                        html.H6([html.I(className="bi bi-person-plus-fill me-2 text-primary"), "Agregar Nuevo Terapeuta a esta Sede"], className="fw-bold mb-2"),
+                        html.P("Ingresa el nombre y correo institucional del terapeuta. Se creará con la contraseña inicial 'Espora2026!' y recibirá un correo de bienvenida.", className="text-muted small mb-2"),
+                        dbc.Row([
+                            dbc.Col(dbc.Input(id="inline-th-name", type="text", placeholder="Nombre completo del terapeuta *"), width=12, md=4, className="mb-2 mb-md-0"),
+                            dbc.Col(dbc.Input(id="inline-th-email", type="email", placeholder="Correo electrónico (ej. terapeuta@unam.mx) *"), width=12, md=5, className="mb-2 mb-md-0"),
+                            dbc.Col(dbc.Button([html.I(className="bi bi-plus-circle me-1"), "Agregar Terapeuta"], id="btn-inline-add-therapist", color="primary", className="w-100 fw-semibold"), width=12, md=3),
+                        ], className="g-2 align-items-center"),
+                        dbc.Alert(id="inline-add-therapist-alert", is_open=False, duration=8000, className="mt-2 mb-0 py-2 small"),
+                        dcc.Store(id="therapist-added-trigger", data=0)
+                    ], className="py-3")
+                ], className="mb-4 border-primary bg-light shadow-sm"),
                 dcc.Dropdown(id="therapist-metrics-dropdown", placeholder="Seleccione un terapeuta..."),
                 dcc.Download(id="download-therapist-conglomerate-csv"),
                 html.Div(id="therapist-metrics-content", className="mt-4")
@@ -726,9 +739,10 @@ def load_waitlist(pathname, active_tab, modal_open, sync_trigger, token):
     Input("coord-url", "pathname"),
     Input("auth-token", "data"),
     Input("sync-limesurvey-trigger", "data"),
+    Input("therapist-added-trigger", "data"),
     prevent_initial_call=False
 )
-def load_site_metrics(pathname, token, sync_trigger=None):
+def load_site_metrics(pathname, token, sync_trigger=None, th_added=None):
     empty_hours = go.Figure().update_layout(title="Horas Clínicas por Semana (Sin sesiones registradas aún)")
     empty_demand = go.Figure().update_layout(title="Evolución de Solicitudes, Atendidos y Lista de Espera (Sin datos aún)")
     if not token:
@@ -993,10 +1007,11 @@ def update_title(pathname, token):
     Output("export-therapist-dropdown", "options"),
     Output("feedback-therapist-filter", "options"),
     Input("coord-url", "pathname"),
-    State("auth-token", "data"),
+    Input("therapist-added-trigger", "data"),
+    Input("auth-token", "data"),
     prevent_initial_call=False
 )
-def load_metrics_dropdowns(pathname, token):
+def load_metrics_dropdowns(pathname, th_added, token):
     if not token:
         return [], [], [], []
     
@@ -1008,7 +1023,13 @@ def load_metrics_dropdowns(pathname, token):
         # Load therapists
         res_t = requests.get(f"{API_URL}/users/therapists", headers=headers)
         if res_t.status_code == 200:
-            therapists = [{"label": t["email"], "value": t["id"]} for t in res_t.json()]
+            therapists = [
+                {
+                    "label": f"{t['full_name']} ({t['email']})" if t.get("full_name") else t["email"],
+                    "value": t["id"]
+                }
+                for t in res_t.json()
+            ]
             
         # Load assigned/active cases (consultants)
         res_c = requests.get(f"{API_URL}/cases", headers=headers)
@@ -1260,10 +1281,11 @@ def display_consultant_metrics(case_id, token):
     Input("coord-url", "pathname"),
     Input("add-therapist-modal", "is_open"),
     Input("upload-therapists-data", "contents"),
+    Input("therapist-added-trigger", "data"),
     State("auth-token", "data"),
     prevent_initial_call=False
 )
-def load_therapists_directory(pathname, is_add_open, upload_contents, token):
+def load_therapists_directory(pathname, is_add_open, upload_contents, th_added, token):
     ctx = dash.callback_context
     trigger_id = ctx.triggered[0]["prop_id"].split(".")[0] if ctx.triggered else None
     
@@ -1910,6 +1932,49 @@ def submit_new_therapist(n_clicks, email, name, phone, token):
             return f"Error: {res.json().get('detail', 'Desconocido')}", "danger", True
     except Exception as e:
         return f"Error de conexión: {e}", "danger", True
+
+@callback(
+    Output("inline-add-therapist-alert", "children"),
+    Output("inline-add-therapist-alert", "color"),
+    Output("inline-add-therapist-alert", "is_open"),
+    Output("inline-th-name", "value"),
+    Output("inline-th-email", "value"),
+    Output("therapist-added-trigger", "data"),
+    Input("btn-inline-add-therapist", "n_clicks"),
+    State("inline-th-name", "value"),
+    State("inline-th-email", "value"),
+    State("therapist-added-trigger", "data"),
+    State("auth-token", "data"),
+    prevent_initial_call=True
+)
+def inline_add_therapist(n_clicks, name, email, current_trigger, token):
+    if not token:
+        return "Sesión expirada. Recarga la página.", "danger", True, no_update, no_update, no_update
+    clean_name = (name or "").strip()
+    clean_email = (email or "").strip()
+    if not clean_name or not clean_email or "@" not in clean_email:
+        return "Por favor ingresa tanto el nombre completo como un correo electrónico válido.", "warning", True, no_update, no_update, no_update
+
+    headers = {"Authorization": f"Bearer {token}"}
+    payload = {
+        "email": clean_email,
+        "full_name": clean_name
+    }
+    try:
+        res = requests.post(f"{API_URL}/users/therapists/quick", json=payload, headers=headers)
+        if res.status_code == 200:
+            return (
+                f"Terapeuta '{clean_name}' ({clean_email}) agregado a tu sede. Contraseña inicial: Espora2026! (se envió correo de bienvenida).",
+                "success",
+                True,
+                "",
+                "",
+                (current_trigger or 0) + 1
+            )
+        else:
+            return f"Error: {res.json().get('detail', 'No se pudo crear el terapeuta')}", "danger", True, no_update, no_update, no_update
+    except Exception as e:
+        return f"Error de conexión: {e}", "danger", True, no_update, no_update, no_update
 
 # --- Add Consultant Callbacks ---
 @callback(
