@@ -16,8 +16,7 @@ API_URL = os.getenv("API_URL", "http://localhost:8000")
 WAITLIST_COLUMNS = [
     {"name": "Nombre", "id": "Nombre"},
     {"name": "Origen", "id": "Origen"},
-    {"name": "Riesgo", "id": "Riesgo"},
-    {"name": "Alarmas", "id": "No. Alarmas", "type": "numeric"},
+    {"name": "Riesgo", "id": "Riesgo", "type": "numeric"},
     {"name": "Grado de Urgencia", "id": "Grado de Urgencia"},
     {"name": "Horario Disponible", "id": "Horario Disponible"},
     {"name": "Fecha Ingreso", "id": "Fecha Ingreso"},
@@ -67,12 +66,37 @@ layout = dbc.Container([
                                 'minWidth': '170px'
                             },
                             {
-                                'if': {'column_id': 'No. Alarmas'},
-                                'width': '72px',
-                                'minWidth': '68px',
-                                'maxWidth': '82px',
+                                'if': {'column_id': 'Riesgo'},
+                                'width': '78px',
+                                'minWidth': '72px',
+                                'maxWidth': '88px',
                                 'textAlign': 'center',
-                                'fontWeight': 'bold'
+                                'fontWeight': '700',
+                                'fontSize': '0.95rem'
+                            },
+                            {
+                                'if': {
+                                    'filter_query': '{Riesgo} = 0',
+                                    'column_id': 'Riesgo'
+                                },
+                                'backgroundColor': '#dcfce7',
+                                'color': '#15803d'
+                            },
+                            {
+                                'if': {
+                                    'filter_query': '{Riesgo} = 1',
+                                    'column_id': 'Riesgo'
+                                },
+                                'backgroundColor': '#fef3c7',
+                                'color': '#b45309'
+                            },
+                            {
+                                'if': {
+                                    'filter_query': '{Riesgo} >= 2',
+                                    'column_id': 'Riesgo'
+                                },
+                                'backgroundColor': '#fee2e2',
+                                'color': '#b91c1c'
                             },
                             {
                                 'if': {'column_id': 'Resumen (LimeSurvey)'},
@@ -566,8 +590,7 @@ def load_waitlist(pathname, active_tab, modal_open, sync_trigger, token):
 
             df['Resumen (LimeSurvey)'] = raw_summary
             df['Palabras de Riesgo'] = raw_summary.apply(extract_risk_words)
-            df['No. Alarmas'] = raw_summary.apply(count_risk_words)
-            df['Riesgo'] = df.apply(get_risk_dot, axis=1)
+            df['Riesgo'] = raw_summary.apply(count_risk_words)
 
             # Extraer Grado de Urgencia (pregunta 'sentimiento': Muy mal, Mal, Regular, Bien, Muy Bien)
             URGENCY_MAP = {
@@ -661,11 +684,11 @@ def load_waitlist(pathname, active_tab, modal_open, sync_trigger, token):
                     return WAITLIST_COLUMNS, []
                 df_to_format['created_at'] = df_to_format['created_at'].apply(lambda x: x[:10] if isinstance(x, str) else "")
                 df_to_format = df_to_format[[
-                    'id', 'participant.full_name', 'Origen', 'Riesgo', 'No. Alarmas', 'Grado de Urgencia',
+                    'id', 'participant.full_name', 'Origen', 'Riesgo', 'Grado de Urgencia',
                     'Horario Disponible', 'created_at', 'Resumen (LimeSurvey)', 'Palabras de Riesgo'
                 ]]
                 df_to_format.columns = [
-                    'ID Caso', 'Nombre', 'Origen', 'Riesgo', 'No. Alarmas', 'Grado de Urgencia',
+                    'ID Caso', 'Nombre', 'Origen', 'Riesgo', 'Grado de Urgencia',
                     'Horario Disponible', 'Fecha Ingreso', 'Resumen (LimeSurvey)', 'Palabras de Riesgo'
                 ]
                 
