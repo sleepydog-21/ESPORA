@@ -74,6 +74,10 @@ def layout(case_id=None, **kwargs):
                         dbc.Row([
                             dbc.Col(dbc.Button("➕ Nueva Captura Clínica", id="btn-new-submission", color="primary", className="w-100 mb-2"), width=12, md=6),
                             dbc.Col(dbc.Button("🔄 Sincronizar LimeSurvey", id="btn-sync-patient-ls", color="outline-primary", className="w-100 mb-2"), width=12, md=6),
+                        ]),
+                        dbc.Row([
+                            dbc.Col(dbc.Button("📨 Enviar Cuestionario de Inicio", id="btn-quick-send-inicio", color="info", outline=True, size="sm", className="w-100 mb-2 fw-semibold"), width=12, md=6),
+                            dbc.Col(dbc.Button("🏁 Enviar Cuestionario de Egreso (CRES-4)", id="btn-quick-send-egreso", color="success", outline=True, size="sm", className="w-100 mb-2 fw-semibold"), width=12, md=6),
                         ], className="mb-2"),
                         dbc.Alert(id="patient-ls-sync-alert", is_open=False, duration=6000, className="small py-2 mb-3"),
                         dcc.Store(id="patient-ls-sync-trigger", data=0),
@@ -1562,13 +1566,27 @@ def download_patient_history(n_clicks, case_id, token):
 
 @callback(
     Output("email-patient-modal", "is_open"),
+    Output("email-template-type", "value"),
+    Output("email-form-select", "value"),
     Input("btn-open-email-modal", "n_clicks"),
+    Input("btn-quick-send-inicio", "n_clicks"),
+    Input("btn-quick-send-egreso", "n_clicks"),
     Input("btn-cancel-email-modal", "n_clicks"),
     State("email-patient-modal", "is_open"),
     prevent_initial_call=True
 )
-def toggle_email_modal(open_clicks, cancel_clicks, is_open):
-    return not is_open
+def toggle_email_modal(open_clicks, inicio_clicks, egreso_clicks, cancel_clicks, is_open):
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        return is_open, no_update, no_update
+    trigger_id = ctx.triggered[0]["prop_id"].split(".")[0]
+    if trigger_id == "btn-cancel-email-modal":
+        return False, no_update, no_update
+    if trigger_id == "btn-quick-send-inicio":
+        return True, "form", "LS_228334"
+    if trigger_id == "btn-quick-send-egreso":
+        return True, "form", "LS_338334"
+    return not is_open, no_update, no_update
 
 @callback(
     Output("div-email-form-select", "style"),
