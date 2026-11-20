@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     mail_username: str = ""
     mail_password: str = ""
     mail_use_tls: bool = False
+    frontend_url: str = "http://localhost:18050"
 
     # LimeSurvey Connector Settings (C3 Infra or Direct)
     limesurvey_api_url: str = "https://lsapi.c3.unam.mx"

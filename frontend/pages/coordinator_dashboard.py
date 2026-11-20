@@ -1,7 +1,7 @@
 import base64
 import io
 import dash
-from dash import html, dcc, callback, Input, Output, State, no_update, dash_table
+from dash import html, dcc, callback, Input, Output, State, no_update, dash_table, ALL
 import dash_bootstrap_components as dbc
 import plotly.express as px
 import plotly.graph_objects as go
@@ -236,7 +236,20 @@ layout = dbc.Container([
                         dcc.Store(id="therapist-added-trigger", data=0)
                     ], className="py-3")
                 ], className="mb-4 border-primary bg-light shadow-sm"),
-                dcc.Dropdown(id="therapist-metrics-dropdown", placeholder="Seleccione un terapeuta..."),
+                dbc.Row([
+                    dbc.Col(dcc.Dropdown(id="therapist-metrics-dropdown", placeholder="Seleccione un terapeuta..."), width=12, md=9, className="mb-2 mb-md-0"),
+                    dbc.Col(
+                        dbc.Button(
+                            [html.I(className="bi bi-person-dash me-1"), "Quitar Terapeuta"],
+                            id="btn-open-remove-therapist",
+                            color="danger",
+                            outline=True,
+                            className="w-100 fw-semibold"
+                        ),
+                        width=12, md=3
+                    )
+                ], className="g-2 align-items-center"),
+                dbc.Alert(id="remove-therapist-tab-alert", is_open=False, duration=8000, className="mt-2 mb-0 py-2 small"),
                 dcc.Download(id="download-therapist-conglomerate-csv"),
                 html.Div(id="therapist-metrics-content", className="mt-4")
             ]), className="border-top-0 border-light mb-4 shadow-sm"),
@@ -391,6 +404,21 @@ layout = dbc.Container([
             dbc.Button("Cancelar", id="btn-cancel-add-therapist", color="secondary")
         ])
     ], id="add-therapist-modal", is_open=False),
+
+    # Remove Therapist & Manual Patient Migration Modal
+    dbc.Modal([
+        dbc.ModalHeader(dbc.ModalTitle([html.I(className="bi bi-person-dash-fill me-2 text-danger"), "Dar de Baja Terapeuta y Migrar Pacientes"])),
+        dbc.ModalBody([
+            dcc.Store(id="remove-therapist-target-id", data=None),
+            html.Div(id="remove-therapist-header-info", className="mb-3"),
+            html.Div(id="remove-therapist-migration-list"),
+            dbc.Alert(id="remove-therapist-modal-alert", is_open=False, className="mt-3 mb-0 small")
+        ]),
+        dbc.ModalFooter([
+            dbc.Button("Cancelar", id="btn-cancel-remove-therapist", color="secondary", outline=True),
+            dbc.Button([html.I(className="bi bi-check2-circle me-1"), "Confirmar Baja y Migrar Expedientes"], id="btn-confirm-remove-therapist", color="danger", className="fw-semibold")
+        ])
+    ], id="remove-therapist-modal", is_open=False, size="lg"),
 
     # Consultants Directory Modal
     dbc.Modal([
@@ -1975,6 +2003,180 @@ def inline_add_therapist(n_clicks, name, email, current_trigger, token):
             return f"Error: {res.json().get('detail', 'No se pudo crear el terapeuta')}", "danger", True, no_update, no_update, no_update
     except Exception as e:
         return f"Error de conexión: {e}", "danger", True, no_update, no_update, no_update
+
+
+# --- Remove Therapist & Manual Patient Migration Callbacks ---
+@callback(
+    Output("remove-therapist-modal", "is_open"),
+    Output("remove-therapist-target-id", "data"),
+    Output("remove-therapist-header-info", "children"),
+    Output("remove-therapist-migration-list", "children"),
+    Output("remove-therapist-tab-alert", "children"),
+    Output("remove-therapist-tab-alert", "color"),
+    Output("remove-therapist-tab-alert", "is_open"),
+    Input("btn-open-remove-therapist", "n_clicks"),
+    Input("btn-cancel-remove-therapist", "n_clicks"),
+    State("therapist-metrics-dropdown", "value"),
+    State("auth-token", "data"),
+    prevent_initial_call=True
+)
+def open_remove_therapist_modal(n_open, n_cancel, selected_th_id, token):
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        return no_update, no_update, no_update, no_update, no_update, no_update, no_update
+    trigger_id = ctx.triggered[0]["prop_id"].split(".")[0]
+
+    if trigger_id == "btn-cancel-remove-therapist":
+        return False, no_update, no_update, no_update, no_update, no_update, no_update
+
+    if not token:
+        return False, None, "", "", "Sesión expirada. Recarga la página.", "danger", True
+
+    if not selected_th_id:
+        return False, None, "", "", "Primero selecciona en el menú desplegable al terapeuta que deseas dar de baja.", "warning", True
+
+    headers = {"Authorization": f"Bearer {token}"}
+    try:
+        res_t = requests.get(f"{API_URL}/users/therapists", headers=headers)
+        res_c = requests.get(f"{API_URL}/cases", headers=headers)
+        if res_t.status_code != 200 or res_c.status_code != 200:
+            return False, None, "", "", "No se pudo consultar la información de terapeutas y expedientes.", "danger", True
+
+        therapists = res_t.json()
+        cases = res_c.json()
+        target_th = next((t for t in therapists if t["id"] == selected_th_id), None)
+        if not target_th:
+            return False, None, "", "", "El terapeuta seleccionado ya no está activo.", "warning", True
+
+        other_therapists = [t for t in therapists if t["id"] != selected_th_id]
+        target_options = [
+            {
+                "label": f"{t.get('full_name') or t['email']} ({t['email']})",
+                "value": t["id"]
+            }
+            for t in other_therapists
+        ]
+        target_options.append({"label": "Regresar a Lista de Espera (Sin asignar)", "value": "WAITLIST"})
+
+        th_cases = [
+            c for c in cases
+            if c.get("therapist_id") == selected_th_id and str(c.get("status", "")).lower() in ("assigned", "active")
+        ]
+
+        th_label = f"{target_th.get('full_name') or target_th['email']} ({target_th['email']})"
+        header_info = dbc.Alert([
+            html.Strong(f"Terapeuta a dar de baja: {th_label}"),
+            html.Br(),
+            html.Span(
+                "Al confirmar, su cuenta quedará desactivada y cada paciente seleccionado se transferirá con todo su historial clínico (sesiones, notas clínicas, notas de voz, cuestionarios LimeSurvey y citas programadas)."
+            )
+        ], color="warning", className="small mb-0")
+
+        if not th_cases:
+            mig_list = dbc.Alert(
+                "Este terapeuta no tiene pacientes activos o asignados actualmente. Puedes confirmar su baja directamente.",
+                color="info",
+                className="small mb-0"
+            )
+        else:
+            rows = [
+                html.P(
+                    f"Selecciona manualmente a qué terapeuta se migrará cada uno de sus {len(th_cases)} paciente(s):",
+                    className="fw-semibold small text-dark mb-2"
+                )
+            ]
+            for c in th_cases:
+                p = c.get("participant") or {}
+                p_name = p.get("full_name") or p.get("anonymous_folio") or f"Caso #{c['id']}"
+                p_acc = p.get("student_account") or "N/D"
+                n_sess = len(c.get("sessions") or [])
+                st_label = "Activo" if str(c.get("status", "")).lower() == "active" else "Asignado"
+                rows.append(
+                    dbc.Row([
+                        dbc.Col([
+                            html.Div(p_name, className="fw-semibold small"),
+                            html.Div(f"Cuenta: {p_acc} · {st_label} · {n_sess} sesión(es)", className="text-muted", style={"fontSize": "11px"})
+                        ], width=12, md=5, className="mb-1 mb-md-0"),
+                        dbc.Col(
+                            dcc.Dropdown(
+                                id={"type": "migrate-patient-dropdown", "index": c["id"]},
+                                options=target_options,
+                                placeholder="Seleccionar terapeuta destino...",
+                                clearable=False
+                            ),
+                            width=12, md=7
+                        )
+                    ], className="g-2 align-items-center py-2 border-bottom")
+                )
+            mig_list = html.Div(rows, style={"maxHeight": "380px", "overflowY": "auto", "paddingRight": "4px"})
+
+        return True, selected_th_id, header_info, mig_list, no_update, no_update, False
+    except Exception as e:
+        return False, None, "", "", f"Error preparando migración: {e}", "danger", True
+
+
+@callback(
+    Output("remove-therapist-modal", "is_open", allow_duplicate=True),
+    Output("remove-therapist-modal-alert", "children"),
+    Output("remove-therapist-modal-alert", "color"),
+    Output("remove-therapist-modal-alert", "is_open"),
+    Output("remove-therapist-tab-alert", "children", allow_duplicate=True),
+    Output("remove-therapist-tab-alert", "color", allow_duplicate=True),
+    Output("remove-therapist-tab-alert", "is_open", allow_duplicate=True),
+    Output("therapist-metrics-dropdown", "value"),
+    Output("therapist-added-trigger", "data", allow_duplicate=True),
+    Input("btn-confirm-remove-therapist", "n_clicks"),
+    State("remove-therapist-target-id", "data"),
+    State({"type": "migrate-patient-dropdown", "index": ALL}, "value"),
+    State({"type": "migrate-patient-dropdown", "index": ALL}, "id"),
+    State("therapist-added-trigger", "data"),
+    State("auth-token", "data"),
+    prevent_initial_call=True
+)
+def confirm_remove_therapist(n_clicks, therapist_id, mig_values, mig_ids, current_trigger, token):
+    if not n_clicks or not therapist_id or not token:
+        return no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update
+
+    migrations = {}
+    for mid, mval in zip(mig_ids or [], mig_values or []):
+        case_id = mid.get("index")
+        if mval is None or mval == "":
+            return (
+                True,
+                "Debes seleccionar manualmente un terapeuta destino (o Lista de Espera) para cada paciente antes de confirmar la baja.",
+                "warning",
+                True,
+                no_update, no_update, no_update, no_update, no_update
+            )
+        migrations[str(case_id)] = None if mval == "WAITLIST" else mval
+
+    headers = {"Authorization": f"Bearer {token}"}
+    try:
+        res = requests.post(
+            f"{API_URL}/users/therapists/{therapist_id}/deactivate-and-migrate",
+            json={"migrations": migrations},
+            headers=headers
+        )
+        if res.status_code == 200:
+            data = res.json()
+            th_name = data.get("deactivated_therapist", "Terapeuta")
+            mig_n = data.get("migrated_cases", 0)
+            wl_n = data.get("returned_to_waitlist", 0)
+            msg = f"Terapeuta '{th_name}' dado de baja correctamente. Expedientes migrados con su historial: {mig_n}"
+            if wl_n:
+                msg += f" · Regresados a lista de espera: {wl_n}"
+            return (
+                False,
+                "", "success", False,
+                msg, "success", True,
+                None,
+                (current_trigger or 0) + 1
+            )
+        else:
+            detail = res.json().get("detail", "No se pudo completar la baja.")
+            return True, f"Error: {detail}", "danger", True, no_update, no_update, no_update, no_update, no_update
+    except Exception as e:
+        return True, f"Error de conexión: {e}", "danger", True, no_update, no_update, no_update, no_update, no_update
 
 # --- Add Consultant Callbacks ---
 @callback(
